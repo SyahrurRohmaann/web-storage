@@ -1,0 +1,19 @@
+{
+  "project": "storagecloud",
+  "updated_at": "2026-09-07",
+  "tasks": {
+    "1": { "status": "done", "notes": "SvelteKit TypeScript initialized with adapter-node and required dependencies.", "blockers": [] },
+    "2": { "status": "done", "notes": "Sky, water, typography, spacing, focus and responsive design tokens implemented.", "blockers": [] },
+    "3": { "status": "done", "notes": "Static hero, clouds, bubble title and upload droplet implemented.", "blockers": [] },
+    "4": { "status": "done", "notes": "Pointer attraction uses rAF lerp with elastic return.", "blockers": [] },
+    "5": { "status": "done", "notes": "Hero-local reversible scrollProgress implemented and unit tested.", "blockers": [] },
+    "6": { "status": "done", "notes": "Organic droplet progressively moves and morphs into a circular plus button.", "blockers": [] },
+    "7": { "status": "done", "notes": "Multiple picker, drag/drop, validation, progress, toast state and private upload key UI implemented.", "blockers": [] },
+    "8": { "status": "pending", "notes": "Owner action documented in README.", "blockers": ["Owner must enable Drive API, create a service account, and share the target folder as Editor."] },
+    "9": { "status": "done", "notes": "Server-only Drive adapter and authenticated upload endpoint implemented with safe errors.", "blockers": [] },
+    "10": { "status": "in_progress", "notes": "UI-to-endpoint behavior and mocked Drive adapter are verified; real Drive upload remains unverified.", "blockers": ["GOOGLE_SERVICE_ACCOUNT_JSON and live folder permission are not present."] },
+    "11": { "status": "done", "notes": "Installable manifest, PNG icons, generated service worker and offline app shell verified.", "blockers": [] },
+    "12": { "status": "done", "notes": "Desktop 1440x900 and mobile 390x844 browser QA passed with zero console errors and no horizontal overflow.", "blockers": [] },
+    "13": { "status": "done", "notes": "Final visual QA passed; idle droplet, typography, clouds and reduced-motion treatment polished.", "blockers": [] }
+  }
+}

@@ -1,0 +1,7 @@
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Inter:wght@400;600;700;800&display=swap');
+@import "tailwindcss";
+
+:root { font-synthesis: none; text-rendering: optimizeLegibility; }
+body { min-width: 320px; }
+button:focus-visible { outline: 3px solid #ffffff; outline-offset: 5px; }
+::selection { background: #0b4c8c; color: #fff; }
