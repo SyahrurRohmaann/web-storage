@@ -2,8 +2,7 @@ import { error, redirect } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { google } from 'googleapis';
 import { oauthState } from '$lib/server/config';
-
-const scopes = ['https://www.googleapis.com/auth/drive.file'];
+import { consentOptions } from '$lib/server/oauthOptions';
 
 /** Mulai consent flow. Hanya pemegang STORAGE_UPLOAD_KEY (via query ?key=) yang boleh. */
 export async function GET({ url, cookies }) {
@@ -19,13 +18,5 @@ export async function GET({ url, cookies }) {
 	const oauth2 = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 	const state = oauthState(process.env.STORAGE_UPLOAD_KEY ?? env.STORAGE_UPLOAD_KEY);
 	cookies.set('oauth_state', state, { httpOnly: true, sameSite: 'lax', secure: true, path: '/', maxAge: 600 });
-
-	const consentUrl = oauth2.generateAuthUrl({
-		access_type: 'offline',
-		prompt: 'consent',
-		scope: scopes,
-		state,
-		redirect_uri: redirectUri
-	});
-	throw redirect(302, consentUrl);
+	throw redirect(302, oauth2.generateAuthUrl(consentOptions(state, redirectUri)));
 }
