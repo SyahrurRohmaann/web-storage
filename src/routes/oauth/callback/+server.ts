@@ -1,7 +1,10 @@
 import { error } from '@sveltejs/kit';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { env } from '$env/dynamic/private';
 import { google } from 'googleapis';
 import { oauthState } from '$lib/server/config';
+
+const TOKEN_PATH_KEY = 'REFRESH_TOKEN_FILE';
 
 export async function GET({ url, cookies }) {
 	const code = url.searchParams.get('code');
@@ -10,7 +13,7 @@ export async function GET({ url, cookies }) {
 	cookies.delete('oauth_state', { path: '/' });
 
 	if (!code || !state || !expectedState || state !== expectedState) {
-		throw error(400, 'State OAuth tidak valid. Ulangi dari /oauth?key=... ');
+		throw error(400, 'State OAuth tidak valid. Ulangi dari /oauth');
 	}
 
 	const clientId = env.GOOGLE_CLIENT_ID;
@@ -20,14 +23,24 @@ export async function GET({ url, cookies }) {
 	const oauth2 = new google.auth.OAuth2(clientId, clientSecret, `${url.origin}/oauth/callback`);
 	const { tokens } = await oauth2.getToken(code);
 	if (!tokens.refresh_token) {
-		throw error(400, 'Google tidak mengembalikan refresh token. Pastikan memilih akun & menyetujui akses, lalu ulangi.');
+		throw error(400, 'Google tidak mengembalikan refresh token. Ulangi consent (pilih akun lalu setujui).');
+	}
+
+	const path = env[TOKEN_PATH_KEY] || '/app/.refresh-token';
+	try {
+		if (existsSync(path)) {
+			const existing = readFileSync(path, 'utf8').trim();
+			if (existing !== tokens.refresh_token) appendFileSync(`${path}.log`, `${new Date().toISOString()} rotated\n`);
+		}
+		writeFileSync(path, `${tokens.refresh_token}\n`, { mode: 0o600 });
+	} catch {
+		throw error(500, 'Gagal menyimpan refresh token ke server');
 	}
 
 	return new Response(
-		`<html><body style="font-family:sans-serif;max-width:32rem;margin:4rem auto"><h2>Refresh token diterima</h2>` +
-			`<p>Refresh token disimpan di bawah (jangan dibagikan). Kirim ke server atau tempel ke <code>.env</code> VPS sebagai <code>GOOGLE_REFRESH_TOKEN</code>.</p>` +
-			`<textarea readonly style="width:100%;height:6rem" onclick="this.select()">${tokens.refresh_token}</textarea>` +
-			`</body></html>`,
+		`<html><body style="font-family:sans-serif;max-width:32rem;margin:4rem auto;text-align:center">` +
+			`<h2>✅ Berhasil</h2><p>Refresh token sudah tersimpan di server. Upload sekarang pakai kuota akun Google lo.</p>` +
+			`<p><a href="/">Kembali ke situs</a></p></body></html>`,
 		{ headers: { 'content-type': 'text/html; charset=utf-8' } }
 	);
 }
