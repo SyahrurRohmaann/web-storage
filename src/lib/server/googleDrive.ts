@@ -18,7 +18,8 @@ export async function uploadFile(file: File): Promise<UploadedDriveFile> {
 			mimeType: file.type || 'application/octet-stream',
 			body: Readable.fromWeb(file.stream() as never)
 		},
-		fields: 'id,name'
+		fields: 'id,name',
+		supportsAllDrives: true
 	});
 	if (!response.data.id) throw new Error('Google Drive tidak mengembalikan ID file');
 	return { id: response.data.id, name: response.data.name || file.name };
