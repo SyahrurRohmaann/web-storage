@@ -1,33 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { readDriveConfig } from './config';
 
-describe('Drive server configuration', () => {
-	it('fails closed when credentials are missing', () => {
-		expect(() => readDriveConfig({})).toThrow('Google Drive belum dikonfigurasi');
-	});
+const base = {
+	GOOGLE_DRIVE_FOLDER_ID: 'folder-1',
+	GOOGLE_CLIENT_ID: 'client-id',
+	GOOGLE_CLIENT_SECRET: 'client-secret',
+	GOOGLE_REFRESH_TOKEN: 'refresh-token'
+};
 
-	it('parses escaped newlines in private keys', () => {
-		const credentials = {
-			client_email: 'storage@example.iam.gserviceaccount.com',
-			private_key: 'line one\\nline two'
-		};
-		const config = readDriveConfig({
-			GOOGLE_SERVICE_ACCOUNT_JSON: JSON.stringify(credentials),
-			GOOGLE_DRIVE_FOLDER_ID: 'folder-123'
+describe('readDriveConfig (OAuth)', () => {
+	it('returns OAuth credentials when all OAuth env vars are present', () => {
+		const config = readDriveConfig(base);
+		expect(config.folderId).toBe('folder-1');
+		expect(config.oAuth).toEqual({
+			clientId: 'client-id',
+			clientSecret: 'client-secret',
+			refreshToken: 'refresh-token'
 		});
-		expect(config.credentials.private_key).toBe('line one\nline two');
-		expect(config.folderId).toBe('folder-123');
 	});
 
-	it('rejects malformed or incomplete service account JSON', () => {
-		expect(() =>
-			readDriveConfig({ GOOGLE_SERVICE_ACCOUNT_JSON: '{bad', GOOGLE_DRIVE_FOLDER_ID: 'x' })
-		).toThrow('Kredensial Google Drive tidak valid');
-		expect(() =>
-			readDriveConfig({
-				GOOGLE_SERVICE_ACCOUNT_JSON: JSON.stringify({ client_email: 'x' }),
-				GOOGLE_DRIVE_FOLDER_ID: 'x'
-			})
-		).toThrow('Kredensial Google Drive tidak lengkap');
+	it('throws when any OAuth env var is missing', () => {
+		expect(() => readDriveConfig({ ...base, GOOGLE_REFRESH_TOKEN: undefined })).toThrow(/OAuth Google belum lengkap/);
+		expect(() => readDriveConfig({ ...base, GOOGLE_CLIENT_SECRET: undefined })).toThrow(/OAuth Google belum lengkap/);
+		expect(() => readDriveConfig({ GOOGLE_DRIVE_FOLDER_ID: 'folder-1' })).toThrow(/OAuth Google belum lengkap/);
+	});
+
+	it('throws when folder id is missing', () => {
+		expect(() => readDriveConfig({ ...base, GOOGLE_DRIVE_FOLDER_ID: undefined })).toThrow(/belum dikonfigurasi/);
 	});
 });

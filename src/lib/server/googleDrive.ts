@@ -7,10 +7,8 @@ export type UploadedDriveFile = { id: string; name: string };
 
 export async function uploadFile(file: File): Promise<UploadedDriveFile> {
 	const config = readDriveConfig(env);
-	const auth = new google.auth.GoogleAuth({
-		credentials: config.credentials,
-		scopes: ['https://www.googleapis.com/auth/drive.file']
-	});
+	const auth = new google.auth.OAuth2(config.oAuth.clientId, config.oAuth.clientSecret);
+	auth.setCredentials({ refresh_token: config.oAuth.refreshToken });
 	const drive = google.drive({ version: 'v3', auth });
 	const response = await drive.files.create({
 		requestBody: { name: file.name, parents: [config.folderId] },
