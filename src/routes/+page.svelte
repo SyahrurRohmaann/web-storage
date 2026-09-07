@@ -13,7 +13,6 @@
 	let uploadProgress = 0;
 	let message = '';
 	let messageType: 'success' | 'error' | '' = '';
-	let uploadKey = '';
 
 	$: easedProgress = easeInOutCubic(scrollProgress);
 	$: blobRadius = dropletRadii(easedProgress);
@@ -79,11 +78,6 @@
 			message = validation.message;
 			return;
 		}
-		if (!uploadKey) {
-			messageType = 'error';
-			message = 'Masukkan kunci upload privat terlebih dahulu.';
-			return;
-		}
 		if (!navigator.onLine) {
 			messageType = 'error';
 			message = 'Kamu sedang offline. Sambungkan internet untuk mengunggah file.';
@@ -115,8 +109,7 @@
 			body.append('files', file);
 			const xhr = new XMLHttpRequest();
 			xhr.open('POST', '/api/upload');
-			xhr.setRequestHeader('x-storage-key', uploadKey);
-			xhr.upload.onprogress = (event) => {
+				xhr.upload.onprogress = (event) => {
 				if (event.lengthComputable) {
 					const current = event.loaded / event.total;
 					uploadProgress = Math.round(((index + current) / total) * 100);
@@ -183,11 +176,7 @@
 		<div class="dock-copy">
 			<span class="step">01 / UPLOAD</span>
 			<h2>Satu tetes.<br />Semua tersimpan.</h2>
-			<p>Pilih hingga 10 file sekaligus, masing-masing maksimal 100 MB. File bergerak langsung dari browser ke endpoint privat, lalu diteruskan ke folder Drive.</p>
-			<label class="key-field">
-				<span>kunci upload privat</span>
-				<input bind:value={uploadKey} type="password" autocomplete="off" placeholder="masukkan kunci" />
-			</label>
+			<p>Pilih hingga 10 file sekaligus, masing-masing maksimal 100 MB. File bergerak langsung dari browser ke folder Drive.</p>
 			<button class="secondary" type="button" onclick={openPicker}>pilih file <span>↗</span></button>
 		</div>
 		<div class="status-panel" aria-live="polite">

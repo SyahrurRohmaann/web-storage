@@ -19,21 +19,6 @@ describe('POST /api/upload', () => {
 		vi.stubEnv('STORAGE_UPLOAD_KEY', 'test-key');
 		uploadFile.mockReset();
 	});
-	it('returns 401 when the private upload key is missing', async () => {
-		vi.stubEnv('STORAGE_UPLOAD_KEY', '');
-		const POST = await importPost();
-		const response = await POST({ request: requestWith([]) } as never);
-		expect(response.status).toBe(401);
-	});
-
-	it('returns 401 when the private upload key is wrong', async () => {
-		const POST = await importPost();
-		const request = requestWith([]);
-		request.headers.set('x-storage-key', 'wrong-key');
-		const response = await POST({ request } as never);
-		expect(response.status).toBe(401);
-	});
-
 	it('returns 413 before parsing an oversized multipart body', async () => {
 		const POST = await importPost();
 		const request = requestWith([]);
@@ -84,11 +69,10 @@ describe('POST /api/upload', () => {
 		expect(uploadFile).not.toHaveBeenCalled();
 	});
 
-	it('uploads valid files and returns safe metadata', async () => {
+	it('uploads valid files without requiring a browser-entered private key', async () => {
 		uploadFile.mockResolvedValueOnce({ id: 'drive-1', name: 'hello.txt' });
 		const POST = await importPost();
 		const request = requestWith([new File(['hello'], 'hello.txt', { type: 'text/plain' })]);
-		request.headers.set('x-storage-key', 'test-key');
 		const response = await POST({ request } as never);
 		expect(response.status).toBe(201);
 		expect(uploadFile).toHaveBeenCalledOnce();

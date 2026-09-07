@@ -1,15 +1,9 @@
 import { json } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 import { uploadFile } from '$lib/server/googleDrive';
 import { validateFiles } from '$lib/upload/validation';
 
 export const POST: RequestHandler = async ({ request }) => {
-	const expectedKey = process.env.STORAGE_UPLOAD_KEY ?? env.STORAGE_UPLOAD_KEY;
-	const suppliedKey = request.headers.get('x-storage-key');
-	if (!expectedKey || suppliedKey !== expectedKey) {
-		return json({ ok: false, message: 'Kunci upload tidak valid.' }, { status: 401 });
-	}
 	const rawLength = request.headers.get('content-length');
 	if (!rawLength || !/^\d+$/.test(rawLength)) {
 		return json({ ok: false, message: 'Panjang permintaan wajib diketahui.' }, { status: 411 });
