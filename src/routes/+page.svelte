@@ -1,8 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { animate } from 'motion';
-	import { clamp01, dropletRadii, easeInOutCubic, lerp, magneticOffset } from '$lib/animations/dropletMotion';
+	import 'lenis/dist/lenis.css';
+	import Lenis from 'lenis';
+	import { dropletRadii, easeInOutCubic, lerp, magneticOffset } from '$lib/animations/dropletMotion';
 	import { heroVisuals } from '$lib/animations/heroVisuals';
+	import {
+		canUseSmoothScroll,
+		createLenisConfig,
+		calculateHeroScrollProgress
+	} from '$lib/animations/smoothScroll';
 	import { validateFiles } from '$lib/upload/validation';
 
 	let hero: HTMLElement;
@@ -25,8 +32,8 @@
 	$: dropletY = pointer.y * (1 - easedProgress);
 
 	onMount(() => {
-		let frame = 0;
 		let raf = 0;
+		let lenis: Lenis | null = null;
 		const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 		if (!prefersReduced && heroCopyEl) {
@@ -37,18 +44,38 @@
 			);
 		}
 
-		const updateScroll = () => {
-			frame = 0;
+		const updateScroll = (currentScroll?: number) => {
 			if (!hero) return;
-			const max = Math.max(1, hero.offsetHeight - window.innerHeight);
-			scrollProgress = clamp01((window.scrollY - hero.offsetTop) / max);
+			const scrollY =
+				typeof currentScroll === 'number'
+					? currentScroll
+					: (lenis?.scroll ?? window.scrollY);
+			scrollProgress = calculateHeroScrollProgress(
+				scrollY,
+				hero.offsetTop,
+				hero.offsetHeight,
+				window.innerHeight
+			);
 		};
 
-		const onScroll = () => {
-			if (!frame) frame = requestAnimationFrame(updateScroll);
+		if (canUseSmoothScroll({ isBrowser: true, prefersReducedMotion: prefersReduced })) {
+			lenis = new Lenis(createLenisConfig());
+			lenis.on('scroll', (instance) => updateScroll(instance.scroll));
+		}
+
+		const onNativeScroll = () => {
+			updateScroll();
 		};
 
-		const tick = () => {
+		const onResize = () => {
+			if (lenis) lenis.resize();
+			updateScroll();
+		};
+
+		const tick = (time: number) => {
+			if (lenis) {
+				lenis.raf(time);
+			}
 			if (!prefersReduced) {
 				pointer = {
 					x: pointer.x + (targetPointer.x - pointer.x) * 0.13,
@@ -61,15 +88,18 @@
 		};
 
 		updateScroll();
-		tick();
-		window.addEventListener('scroll', onScroll, { passive: true });
-		window.addEventListener('resize', updateScroll);
+		raf = requestAnimationFrame(tick);
+		window.addEventListener('scroll', onNativeScroll, { passive: true });
+		window.addEventListener('resize', onResize);
 
 		return () => {
-			window.removeEventListener('scroll', onScroll);
-			window.removeEventListener('resize', updateScroll);
+			if (lenis) {
+				lenis.destroy();
+				lenis = null;
+			}
+			window.removeEventListener('scroll', onNativeScroll);
+			window.removeEventListener('resize', onResize);
 			cancelAnimationFrame(raf);
-			if (frame) cancelAnimationFrame(frame);
 		};
 	});
 
@@ -261,7 +291,7 @@
 
 <style>
 	:global(*) { box-sizing: border-box; }
-	:global(html) { scroll-behavior: smooth; background: #8fd3ff; }
+	:global(html) { background: #8fd3ff; }
 	:global(body) { margin: 0; font-family: 'Inter', system-ui, sans-serif; color: #073b6f; background: #8fd3ff; }
 	:global(button) { font: inherit; }
 
