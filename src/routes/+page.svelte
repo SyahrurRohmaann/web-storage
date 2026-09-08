@@ -3,8 +3,9 @@
 	import { animate } from 'motion';
 	import 'lenis/dist/lenis.css';
 	import Lenis from 'lenis';
-	import { dropletRadii, easeInOutCubic, lerp, magneticOffset } from '$lib/animations/dropletMotion';
+	import { dropletRadii, easeInOutCubic, magneticOffset } from '$lib/animations/dropletMotion';
 	import { heroVisuals } from '$lib/animations/heroVisuals';
+	import { computeAstralField } from '$lib/animations/astralField';
 	import {
 		canUseSmoothScroll,
 		createLenisConfig,
@@ -24,20 +25,51 @@
 	let uploadProgress = 0;
 	let message = '';
 	let messageType: 'success' | 'error' | '' = '';
+	let prefersReduced = false;
+	let isMobile = false;
+	let requestTick = () => {};
 
-	$: visual = heroVisuals(scrollProgress);
-	$: easedProgress = easeInOutCubic(scrollProgress);
+	$: visualProgress = prefersReduced ? 0 : scrollProgress;
+	$: visual = heroVisuals(scrollProgress, prefersReduced);
+	$: easedProgress = easeInOutCubic(visualProgress);
 	$: blobRadius = dropletRadii(easedProgress);
-	$: dropletX = pointer.x * (1 - easedProgress);
-	$: dropletY = pointer.y * (1 - easedProgress);
+	$: dropletX = prefersReduced ? 0 : pointer.x * (1 - easedProgress);
+	$: dropletY = prefersReduced ? 0 : pointer.y * (1 - easedProgress);
+	$: astralObjects = computeAstralField(scrollProgress, {
+		prefersReducedMotion: prefersReduced,
+		isMobile
+	});
 
 	onMount(() => {
 		let raf = 0;
 		let lenis: Lenis | null = null;
-		const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		let heroCopyAnimation: { stop: () => void; cancel: () => void } | null = null;
+
+		const mediaReduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+		prefersReduced = mediaReduced.matches;
+		const mediaMobile = window.matchMedia('(max-width: 768px)');
+		isMobile = mediaMobile.matches;
+
+		const onMediaChange = () => {
+			prefersReduced = mediaReduced.matches;
+			isMobile = mediaMobile.matches;
+			if (prefersReduced) {
+				stopMotion();
+				lenis?.destroy();
+				lenis = null;
+				cancelAnimationFrame(raf);
+				raf = 0;
+				pointer = targetPointer = { x: 0, y: 0 };
+			} else {
+				startLenis();
+			}
+			updateScroll(window.scrollY);
+		};
+		mediaReduced.addEventListener('change', onMediaChange);
+		mediaMobile.addEventListener('change', onMediaChange);
 
 		if (!prefersReduced && heroCopyEl) {
-			animate(
+			heroCopyAnimation = animate(
 				heroCopyEl,
 				{ opacity: [0, 1], y: [24, 0], scale: [0.95, 1] },
 				{ duration: 0.85, ease: [0.22, 1.2, 0.36, 1] }
@@ -58,13 +90,25 @@
 			);
 		};
 
-		if (canUseSmoothScroll({ isBrowser: true, prefersReducedMotion: prefersReduced })) {
-			lenis = new Lenis(createLenisConfig());
-			lenis.on('scroll', (instance) => updateScroll(instance.scroll));
+		function stopMotion() {
+			heroCopyAnimation?.stop();
+			// Remove entrance styles so the scroll/static styles own the title again.
+			heroCopyAnimation?.cancel();
+			heroCopyAnimation = null;
+		}
+
+		function startLenis() {
+			if (!lenis && canUseSmoothScroll({ isBrowser: true, prefersReducedMotion: prefersReduced })) {
+				lenis = new Lenis(createLenisConfig());
+				lenis.on('scroll', (instance) => {
+					updateScroll(instance.scroll);
+					if (instance.isScrolling === 'smooth') requestTick();
+				});
+			}
 		}
 
 		const onNativeScroll = () => {
-			updateScroll();
+			updateScroll(window.scrollY);
 		};
 
 		const onResize = () => {
@@ -73,38 +117,45 @@
 		};
 
 		const tick = (time: number) => {
-			if (lenis) {
-				lenis.raf(time);
-			}
-			if (!prefersReduced) {
-				pointer = {
-					x: pointer.x + (targetPointer.x - pointer.x) * 0.13,
-					y: pointer.y + (targetPointer.y - pointer.y) * 0.13
-				};
-			} else {
-				pointer = { x: 0, y: 0 };
-			}
-			raf = requestAnimationFrame(tick);
+			// Keep the current RAF marked pending while Lenis emits scroll events.
+			lenis?.raf(time);
+			raf = 0;
+			const moving = Math.hypot(targetPointer.x - pointer.x, targetPointer.y - pointer.y) > 0.1;
+			pointer = moving ? {
+				x: pointer.x + (targetPointer.x - pointer.x) * 0.13,
+				y: pointer.y + (targetPointer.y - pointer.y) * 0.13
+			} : { ...targetPointer };
+			if (moving || lenis?.isScrolling === 'smooth') requestTick();
 		};
+		requestTick = () => {
+			if (!prefersReduced && !raf) raf = requestAnimationFrame(tick);
+		};
+		const onWheel = () => requestTick();
 
+		startLenis();
 		updateScroll();
-		raf = requestAnimationFrame(tick);
+		window.addEventListener('wheel', onWheel, { passive: true });
 		window.addEventListener('scroll', onNativeScroll, { passive: true });
 		window.addEventListener('resize', onResize);
 
 		return () => {
+			stopMotion();
 			if (lenis) {
 				lenis.destroy();
 				lenis = null;
 			}
 			window.removeEventListener('scroll', onNativeScroll);
+			window.removeEventListener('wheel', onWheel);
 			window.removeEventListener('resize', onResize);
+			mediaReduced.removeEventListener('change', onMediaChange);
+			mediaMobile.removeEventListener('change', onMediaChange);
 			cancelAnimationFrame(raf);
+			requestTick = () => {};
 		};
 	});
 
 	function followPointer(event: PointerEvent) {
-		if (scrollProgress > 0.45) return;
+		if (prefersReduced || scrollProgress > 0.45) return;
 		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
 		targetPointer = magneticOffset(
 			rect.left + rect.width / 2,
@@ -113,10 +164,12 @@
 			event.clientY,
 			220
 		);
+		requestTick();
 	}
 
 	function releasePointer() {
 		targetPointer = { x: 0, y: 0 };
+		requestTick();
 	}
 
 	function openPicker() {
@@ -193,8 +246,18 @@
 <svelte:head>
 	<title>Storage — simpan yang penting</title>
 	<meta name="description" content="Penyimpanan cloud personal dengan pengalaman upload yang ringan dan menyenangkan." />
-	<meta name="theme-color" content="#3fa9f5" />
+	<meta name="theme-color" content="#060b18" />
 </svelte:head>
+
+<svg class="sr-only" aria-hidden="true" width="0" height="0">
+	<defs>
+		<radialGradient id="starGlow" cx="50%" cy="50%" r="50%">
+			<stop offset="0%" stop-color="#ffffff" stop-opacity="1" />
+			<stop offset="45%" stop-color="#7dd3fc" stop-opacity="0.9" />
+			<stop offset="100%" stop-color="#38bdf8" stop-opacity="0.3" />
+		</radialGradient>
+	</defs>
+</svg>
 
 <main>
 	<section
@@ -206,14 +269,48 @@
 		ondragover={(e) => e.preventDefault()}
 		ondrop={onDrop}
 	>
-		<div class="cloud cloud-a"></div>
-		<div class="cloud cloud-b"></div>
-		<div class="cloud cloud-c"></div>
+		<div class="cloud cloud-a" aria-hidden="true"></div>
+		<div class="cloud cloud-b" aria-hidden="true"></div>
+		<div class="cloud cloud-c" aria-hidden="true"></div>
+
+		<!-- Decorative Astral Field -->
+		<div class="astral-field" aria-hidden="true" style={`opacity:${visual.fieldIntensity}`}>
+			{#each astralObjects as item (item.id)}
+				<div
+					class="astral-item"
+					style={`left:${item.x}%;top:${item.y}%;width:${item.size}px;height:${item.size}px;opacity:${item.opacity};transform:${item.transform}`}
+				>
+					{#if item.type === 'star'}
+						<svg viewBox="0 0 24 24" class="astral-star" fill="none">
+							<path d="M12 0L14.5 9.5L24 12L14.5 14.5L12 24L9.5 14.5L0 12L9.5 9.5L12 0Z" fill="url(#starGlow)" />
+						</svg>
+					{:else if item.type === 'glint'}
+						<svg viewBox="0 0 24 24" class="astral-glint" fill="none">
+							<circle cx="12" cy="12" r="2.5" fill="#ffffff" />
+							<path d="M12 1v22M1 12h22M4 4l16 16M4 20L20 4" stroke="#7dd3fc" stroke-width="1.2" stroke-linecap="round" />
+						</svg>
+					{:else if item.type === 'bubble'}
+						<div class="astral-bubble">
+							<span class="bubble-specular"></span>
+						</div>
+					{:else if item.type === 'droplet'}
+						<div class="astral-droplet"></div>
+					{:else if item.type === 'pill'}
+						<div class="astral-pill">
+							<span class="pill-dot"></span>
+							{#if item.label}
+								<span class="pill-text">{item.label}</span>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			{/each}
+		</div>
 
 		<div
 			bind:this={heroCopyEl}
 			class="hero-copy"
-			style={`opacity:${visual.titleOpacity};transform:translateY(${visual.titleY}px) scale(${1 - easedProgress * 0.12});pointer-events:${visual.titleOpacity < 0.05 ? 'none' : 'auto'}`}
+			style={`opacity:${visual.titleOpacity};transform:translateY(${visual.titleY}px) scale(${visual.titleScale});pointer-events:${visual.titlePointerEvents}`}
 		>
 			<p class="eyebrow">personal cloud · simple by design</p>
 			<h1 class="metallic-title">storage</h1>
@@ -222,12 +319,12 @@
 
 		<button
 			bind:this={dropletEl}
-			class:docked={scrollProgress > 0.88}
+			class:docked={visualProgress > 0.88}
 			class="droplet"
 			type="button"
 			onclick={openPicker}
 			aria-label="Pilih file untuk diunggah"
-			style={`--progress:${easedProgress};--radius:${blobRadius};--mx:${dropletX}px;--my:${dropletY}px;--rise:${lerp(0, -215, easedProgress)}px;--droplet-scale:${visual.dropletScale}`}
+			style={`--progress:${easedProgress};--radius:${blobRadius};--mx:${dropletX}px;--my:${dropletY}px;--rise:${visual.dropletY}px;--droplet-scale:${visual.dropletScale}`}
 		>
 			<!-- Layered internal water refraction and caustic structure -->
 			<div class="water-caustic" aria-hidden="true">
@@ -266,7 +363,7 @@
 			{/if}
 		</button>
 
-		<div class="scroll-cue" style={`opacity:${1 - scrollProgress * 4}`}>
+		<div class="scroll-cue" style={`opacity:${Math.max(0, 1 - visualProgress * 4)}`}>
 			<span>scroll to lift the drop</span><i></i>
 		</div>
 		<input bind:this={picker} onchange={onFilesSelected} type="file" multiple hidden />
@@ -291,24 +388,153 @@
 
 <style>
 	:global(*) { box-sizing: border-box; }
-	:global(html) { background: #8fd3ff; }
-	:global(body) { margin: 0; font-family: 'Inter', system-ui, sans-serif; color: #073b6f; background: #8fd3ff; }
+	:global(html) { background: #050b17; color-scheme: dark; }
+	:global(body) { margin: 0; font-family: 'Inter', system-ui, sans-serif; color: #e2eaf8; background: #050b17; }
 	:global(button) { font: inherit; }
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border-width: 0;
+	}
 
 	.hero {
 		height: 190vh;
 		min-height: 1050px;
 		position: relative;
 		overflow: clip;
-		background: linear-gradient(180deg, #e8f6ff 0%, #bfe7ff 42%, #8fd3ff 100%);
+		background: linear-gradient(180deg, #050b17 0%, #09132b 34%, #0e214d 65%, #14356e 86%, #1a427f 100%);
 	}
+	/* Planetary horizon glow at bottom of hero */
+	.hero::before {
+		content: '';
+		position: absolute;
+		inset: auto 0 0 0;
+		height: 50%;
+		pointer-events: none;
+		z-index: 1;
+		background: radial-gradient(
+			ellipse 120% 70% at 50% 102%,
+			rgba(56, 189, 248, 0.42) 0%,
+			rgba(14, 165, 233, 0.24) 38%,
+			rgba(3, 105, 161, 0.1) 70%,
+			transparent 90%
+		);
+		filter: blur(10px);
+	}
+	/* Subtle cosmic ambient nebula glow */
 	.hero::after {
 		content: '';
 		position: absolute;
 		inset: 0;
 		pointer-events: none;
-		background: radial-gradient(circle at 50% 28%, rgba(255, 255, 255, 0.6), transparent 42%);
-		opacity: 0.65;
+		background: radial-gradient(
+			ellipse 70% 50% at 50% 30%,
+			rgba(56, 189, 248, 0.15) 0%,
+			rgba(14, 165, 233, 0.08) 45%,
+			transparent 75%
+		);
+		opacity: 0.85;
+	}
+
+	/* Decorative Astral Field */
+	.astral-field {
+		position: absolute;
+		inset: 0;
+		overflow: hidden;
+		pointer-events: none;
+		z-index: 2;
+	}
+	.astral-item {
+		position: absolute;
+		display: grid;
+		place-items: center;
+		transform-origin: center center;
+		pointer-events: none;
+		user-select: none;
+		will-change: transform, opacity;
+	}
+	.astral-star {
+		width: 100%;
+		height: 100%;
+		filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.75));
+	}
+	.astral-glint {
+		width: 100%;
+		height: 100%;
+		filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.85));
+	}
+	.astral-bubble {
+		width: 100%;
+		height: 100%;
+		border-radius: 50%;
+		background: radial-gradient(
+			circle at 35% 30%,
+			rgba(255, 255, 255, 0.7) 0%,
+			rgba(125, 211, 252, 0.3) 40%,
+			rgba(14, 165, 233, 0.15) 70%,
+			transparent 100%
+		);
+		border: 1px solid rgba(255, 255, 255, 0.4);
+		box-shadow: 0 0 12px rgba(56, 189, 248, 0.25), inset 1px 1px 3px rgba(255, 255, 255, 0.7);
+		backdrop-filter: blur(2px);
+		position: relative;
+	}
+	.bubble-specular {
+		position: absolute;
+		top: 18%;
+		left: 22%;
+		width: 25%;
+		height: 25%;
+		border-radius: 50%;
+		background: rgba(255, 255, 255, 0.85);
+		filter: blur(0.5px);
+	}
+	.astral-droplet {
+		width: 100%;
+		height: 100%;
+		border-radius: 50% 50% 50% 0;
+		transform: rotate(-45deg);
+		background: radial-gradient(
+			circle at 40% 40%,
+			rgba(255, 255, 255, 0.8) 0%,
+			rgba(56, 189, 248, 0.5) 50%,
+			rgba(2, 132, 199, 0.7) 100%
+		);
+		box-shadow: 0 0 10px rgba(56, 189, 248, 0.35), inset 1px 1px 2px rgba(255, 255, 255, 0.75);
+	}
+	.astral-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 3px 8px;
+		border-radius: 999px;
+		background: rgba(15, 23, 42, 0.65);
+		border: 1px solid rgba(56, 189, 248, 0.35);
+		box-shadow: 0 4px 14px rgba(2, 6, 23, 0.4), 0 0 10px rgba(56, 189, 248, 0.15);
+		backdrop-filter: blur(6px);
+		white-space: nowrap;
+	}
+	.pill-dot {
+		width: 5px;
+		height: 5px;
+		border-radius: 50%;
+		background: #38bdf8;
+		box-shadow: 0 0 6px #38bdf8;
+	}
+	.pill-text {
+		font-family: 'Inter', monospace, sans-serif;
+		font-size: 0.62rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		color: #bae6fd;
+		text-transform: lowercase;
 	}
 
 	.hero-copy {
@@ -317,53 +543,57 @@
 		width: min(980px, 92vw);
 		margin: auto;
 		text-align: center;
-		z-index: 2;
+		z-index: 3;
 		transform-origin: 50% 20%;
 		transition: opacity 0.08s linear;
 	}
 	.eyebrow {
-		letter-spacing: 0.22em;
+		letter-spacing: 0.24em;
 		text-transform: uppercase;
 		font-size: 0.72rem;
 		font-weight: 700;
 		margin: 0 0 1.2rem;
-		opacity: 0.68;
-		color: #0d47a1;
+		opacity: 0.9;
+		color: #7dd3fc;
+		text-shadow: 0 0 14px rgba(56, 189, 248, 0.45);
 	}
 
 	/* Metallic balloon title font styling */
 	.metallic-title {
 		font-family: 'Fredoka', 'Baloo 2', 'Arial Rounded MT Bold', sans-serif;
-		font-size: clamp(5rem, 16vw, 10.5rem);
+		font-size: clamp(3.8rem, 15vw, 10.2rem);
 		font-weight: 700;
 		line-height: 0.82;
 		margin: 0;
 		letter-spacing: -0.04em;
+		color: #e2eaf8; /* Fallback for browsers without background-clip: text */
 		background: linear-gradient(
-			165deg,
+			172deg,
 			#ffffff 0%,
-			#e0f2ff 14%,
-			#72bdf8 30%,
-			#1b74d1 50%,
-			#083e78 70%,
-			#4ca3f5 86%,
-			#ffffff 100%
+			#f0f7ff 16%,
+			#bae6fd 32%,
+			#38bdf8 48%,
+			#ffffff 52%,
+			#7dd3fc 68%,
+			#0284c7 85%,
+			#e0f2fe 100%
 		);
 		-webkit-background-clip: text;
 		-webkit-text-fill-color: transparent;
 		background-clip: text;
-		filter: drop-shadow(0 2px 1px rgba(255, 255, 255, 0.95))
-			drop-shadow(0 14px 28px rgba(11, 76, 140, 0.3))
-			drop-shadow(0 32px 64px rgba(11, 76, 140, 0.16));
+		filter: drop-shadow(0 2px 2px rgba(2, 6, 23, 0.8))
+			drop-shadow(0 10px 24px rgba(56, 189, 248, 0.28))
+			drop-shadow(0 24px 50px rgba(2, 132, 199, 0.18));
 		transform-origin: center bottom;
 	}
 
 	.subtitle {
 		font-size: clamp(0.95rem, 2vw, 1.22rem);
 		letter-spacing: 0.03em;
-		opacity: 0.75;
+		opacity: 0.82;
 		margin-top: 1.8rem;
-		color: #073b6f;
+		color: #cbd5e1;
+		text-shadow: 0 1px 4px rgba(2, 6, 23, 0.6);
 	}
 
 	/* Substantially larger, realistically water-like droplet */
@@ -377,7 +607,7 @@
 		margin-top: 30vh;
 		display: grid;
 		place-items: center;
-		width: clamp(140px, 17vw, 190px);
+		width: clamp(150px, 18vw, 210px);
 		aspect-ratio: 1;
 		border-radius: var(--radius);
 		cursor: pointer;
@@ -386,27 +616,26 @@
 		user-select: none;
 		-webkit-user-select: none;
 
-		/* Optical water refraction and transparency */
+		/* Optical transparent liquid glass against astral sky */
 		background: radial-gradient(
-			132% 132% at 32% 28%,
-			rgba(255, 255, 255, 0.48) 0%,
-			rgba(182, 234, 255, 0.3) 26%,
-			rgba(56, 182, 255, 0.44) 66%,
-			rgba(24, 119, 242, 0.72) 100%
+			136% 136% at 30% 24%,
+			rgba(255, 255, 255, 0.45) 0%,
+			rgba(186, 230, 253, 0.26) 24%,
+			rgba(56, 189, 248, 0.38) 64%,
+			rgba(2, 132, 199, 0.68) 100%
 		);
-		backdrop-filter: blur(8px) saturate(155%) brightness(106%);
-		-webkit-backdrop-filter: blur(8px) saturate(155%) brightness(106%);
+		backdrop-filter: blur(10px) saturate(160%) brightness(110%);
+		-webkit-backdrop-filter: blur(10px) saturate(160%) brightness(110%);
 
-		/* Layered realistic water shadows and Fresnel inner rims */
 		border: 1.5px solid rgba(255, 255, 255, 0.72);
 		box-shadow:
-			0 36px 72px -10px rgba(11, 76, 140, 0.34),
-			0 16px 32px -4px rgba(11, 76, 140, 0.22),
-			0 0 28px rgba(114, 198, 255, 0.38),
-			inset 8px 10px 18px rgba(255, 255, 255, 0.58),
-			inset 2px 2px 6px rgba(255, 255, 255, 0.88),
-			inset -10px -12px 24px rgba(7, 59, 111, 0.32),
-			inset -4px -4px 10px rgba(7, 59, 111, 0.22);
+			0 36px 72px -10px rgba(2, 6, 23, 0.6),
+			0 16px 36px -4px rgba(14, 165, 233, 0.35),
+			0 0 32px rgba(56, 189, 248, 0.35),
+			inset 8px 10px 18px rgba(255, 255, 255, 0.6),
+			inset 2px 2px 6px rgba(255, 255, 255, 0.9),
+			inset -10px -12px 24px rgba(3, 105, 161, 0.4),
+			inset -4px -4px 10px rgba(2, 6, 23, 0.3);
 
 		transform: translate(var(--mx), calc(var(--my) + var(--rise)))
 			rotate(calc((1 - var(--progress)) * 26deg))
@@ -421,24 +650,25 @@
 
 	.droplet:hover {
 		box-shadow:
-			0 42px 80px -6px rgba(11, 76, 140, 0.44),
-			0 20px 40px -4px rgba(11, 76, 140, 0.3),
-			0 0 36px rgba(114, 198, 255, 0.55),
-			inset 10px 12px 22px rgba(255, 255, 255, 0.72),
-			inset 2px 2px 6px rgba(255, 255, 255, 0.95),
-			inset -10px -12px 24px rgba(7, 59, 111, 0.28),
-			0 0 0 10px rgba(255, 255, 255, 0.24);
+			0 40px 80px -6px rgba(2, 6, 23, 0.7),
+			0 20px 42px -4px rgba(14, 165, 233, 0.45),
+			0 0 44px rgba(56, 189, 248, 0.55),
+			inset 10px 12px 22px rgba(255, 255, 255, 0.75),
+			inset 2px 2px 6px rgba(255, 255, 255, 0.98),
+			inset -10px -12px 24px rgba(3, 105, 161, 0.35),
+			0 0 0 8px rgba(56, 189, 248, 0.2);
 	}
 
 	.droplet.docked {
 		border-radius: 50%;
 		animation: none;
-		background: linear-gradient(145deg, #42a5f5, #1565c0);
-		border: 2px solid rgba(255, 255, 255, 0.9);
+		background: linear-gradient(145deg, #38bdf8, #0284c7);
+		border: 2px solid rgba(255, 255, 255, 0.95);
 		box-shadow:
-			0 16px 36px rgba(13, 71, 161, 0.36),
-			0 6px 14px rgba(13, 71, 161, 0.22),
-			inset 0 2px 5px rgba(255, 255, 255, 0.55);
+			0 16px 36px rgba(2, 6, 23, 0.6),
+			0 6px 16px rgba(2, 132, 199, 0.4),
+			0 0 24px rgba(56, 189, 248, 0.4),
+			inset 0 2px 6px rgba(255, 255, 255, 0.65);
 	}
 
 	/* Layer 1: Internal caustic & light refraction */
@@ -566,20 +796,22 @@
 		letter-spacing: 0.18em;
 		font-size: 0.58rem;
 		font-weight: 700;
+		color: #7dd3fc;
 	}
 	.scroll-cue i {
 		height: 42px;
 		width: 1px;
-		background: #0b4c8c;
+		background: linear-gradient(180deg, #38bdf8 0%, transparent 100%);
 		animation: pulse 1.6s ease-in-out infinite;
 	}
 
 	.cloud {
 		position: absolute;
 		z-index: 1;
-		background: rgba(255, 255, 255, 0.55);
-		filter: blur(1px);
+		background: radial-gradient(ellipse at center, rgba(56, 189, 248, 0.18) 0%, rgba(14, 165, 233, 0.08) 50%, transparent 75%);
+		filter: blur(14px);
 		border-radius: 999px;
+		pointer-events: none;
 	}
 	.cloud::before,
 	.cloud::after {
@@ -589,39 +821,39 @@
 		background: inherit;
 	}
 	.cloud-a {
-		width: 250px;
-		height: 55px;
+		width: 280px;
+		height: 65px;
 		top: 19%;
 		left: -40px;
 		animation: drift 18s ease-in-out infinite;
 	}
-	.cloud-a::before { width: 110px; height: 110px; left: 55px; bottom: 0; }
-	.cloud-a::after { width: 85px; height: 85px; right: 35px; bottom: 0; }
+	.cloud-a::before { width: 120px; height: 120px; left: 55px; bottom: 0; }
+	.cloud-a::after { width: 95px; height: 95px; right: 35px; bottom: 0; }
 
 	.cloud-b {
-		width: 180px;
-		height: 40px;
+		width: 200px;
+		height: 48px;
 		top: 31%;
 		right: -20px;
 		opacity: 0.75;
 		animation: drift 24s ease-in-out infinite reverse;
 	}
-	.cloud-b::before { width: 80px; height: 80px; left: 25px; bottom: 0; }
-	.cloud-b::after { width: 60px; height: 60px; right: 20px; bottom: 0; }
+	.cloud-b::before { width: 90px; height: 90px; left: 25px; bottom: 0; }
+	.cloud-b::after { width: 70px; height: 70px; right: 20px; bottom: 0; }
 
 	.cloud-c {
-		width: 115px;
-		height: 28px;
+		width: 135px;
+		height: 35px;
 		top: 52%;
 		left: 15%;
-		opacity: 0.42;
+		opacity: 0.5;
 	}
-	.cloud-c::before { width: 50px; height: 50px; left: 18px; bottom: 0; }
-	.cloud-c::after { width: 45px; height: 45px; right: 15px; bottom: 0; }
+	.cloud-c::before { width: 60px; height: 60px; left: 18px; bottom: 0; }
+	.cloud-c::after { width: 55px; height: 55px; right: 15px; bottom: 0; }
 
 	.dock-zone {
 		min-height: 100vh;
-		background: #f8fcff;
+		background: #081023;
 		padding: clamp(5rem, 10vw, 9rem) clamp(1.5rem, 8vw, 9rem);
 		display: grid;
 		grid-template-columns: 1.05fr 0.95fr;
@@ -631,37 +863,38 @@
 	.step {
 		font-size: 0.68rem;
 		letter-spacing: 0.2em;
-		color: #1e88e5;
+		color: #38bdf8;
 		font-weight: 800;
 	}
 	h2 {
 		font-family: 'Fredoka', 'Baloo 2', sans-serif;
-		font-size: clamp(3rem, 7vw, 6.5rem);
+		font-size: clamp(2.4rem, 6vw, 6.5rem);
 		letter-spacing: -0.055em;
 		line-height: 0.84;
 		margin: 1.4rem 0 2rem;
-		color: #073b6f;
+		color: #f1f5f9;
 	}
 	.dock-copy p {
 		max-width: 580px;
 		line-height: 1.75;
-		color: #52708d;
+		color: #94a3b8;
 	}
 	.secondary {
 		margin-top: 1.2rem;
-		border: 1.5px solid #a9d9f7;
+		border: 1.5px solid #38bdf8;
 		border-radius: 999px;
 		padding: 0.9rem 1.6rem;
-		background: white;
-		color: #07539a;
+		background: rgba(14, 165, 233, 0.12);
+		color: #e0f2fe;
 		font-weight: 750;
 		cursor: pointer;
-		box-shadow: 0 8px 25px rgba(30, 136, 229, 0.12);
+		box-shadow: 0 8px 25px rgba(2, 132, 199, 0.25);
 		transition: all 0.2s ease;
+		backdrop-filter: blur(8px);
 	}
 	.secondary:hover {
-		background: #f0f8ff;
-		box-shadow: 0 12px 30px rgba(30, 136, 229, 0.2);
+		background: rgba(56, 189, 248, 0.24);
+		box-shadow: 0 12px 30px rgba(56, 189, 248, 0.35);
 		transform: translateY(-1px);
 	}
 	.secondary span {
@@ -671,12 +904,13 @@
 	.status-panel {
 		min-height: 500px;
 		padding: 1.5rem;
-		border: 1px solid rgba(63, 169, 245, 0.25);
+		border: 1px solid rgba(56, 189, 248, 0.25);
 		border-radius: 36px;
-		background: linear-gradient(155deg, rgba(232, 246, 255, 0.8), rgba(143, 211, 255, 0.36));
-		box-shadow: 0 35px 85px rgba(36, 123, 183, 0.18);
+		background: linear-gradient(155deg, rgba(15, 23, 42, 0.85), rgba(30, 41, 59, 0.55));
+		box-shadow: 0 35px 85px rgba(2, 6, 23, 0.5);
 		display: flex;
 		flex-direction: column;
+		backdrop-filter: blur(16px);
 	}
 	.status-head {
 		display: flex;
@@ -686,13 +920,14 @@
 		text-transform: uppercase;
 		font-size: 0.64rem;
 		font-weight: 800;
+		color: #94a3b8;
 	}
 	.status-head b {
 		width: 9px;
 		height: 9px;
 		border-radius: 50%;
-		background: #55c990;
-		box-shadow: 0 0 0 6px rgba(85, 201, 144, 0.12);
+		background: #34d399;
+		box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.16);
 	}
 	.status-head b.active {
 		animation: pulse-dot 1s infinite;
@@ -701,7 +936,7 @@
 		flex: 1;
 		display: grid;
 		place-items: center;
-		background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0 1px, transparent 2px);
+		background: radial-gradient(circle, rgba(56, 189, 248, 0.4) 0 1px, transparent 2px);
 		background-size: 28px 28px;
 		mask-image: radial-gradient(circle, black, transparent 68%);
 	}
@@ -713,19 +948,19 @@
 		place-items: center;
 		color: #fff;
 		font-size: 3.3rem;
-		background: linear-gradient(145deg, #70d2ff, #1686e9);
-		box-shadow: inset 15px 15px 30px rgba(255, 255, 255, 0.34), 0 32px 65px rgba(30, 136, 229, 0.32);
+		background: linear-gradient(145deg, #38bdf8, #0284c7);
+		box-shadow: inset 15px 15px 30px rgba(255, 255, 255, 0.35), 0 32px 65px rgba(2, 132, 199, 0.4);
 		animation: float 4s ease-in-out infinite;
 	}
 	.status-panel > p {
 		text-align: center;
-		color: #52708d;
+		color: #94a3b8;
 	}
 	.status-panel > p.success {
-		color: #087b50;
+		color: #34d399;
 	}
 	.status-panel > p.error {
-		color: #bc3e56;
+		color: #f87171;
 	}
 
 	@keyframes float {
@@ -746,8 +981,8 @@
 
 	@media (max-width: 760px) {
 		.hero { height: 170vh; }
-		.hero-copy { top: 22vh; }
-		.droplet { top: 64vh; }
+		.hero-copy { top: 20vh; }
+		.droplet { top: 62vh; width: clamp(130px, 32vw, 160px); }
 		.dock-zone { grid-template-columns: 1fr; }
 		.status-panel { min-height: 390px; }
 		.cloud { transform: scale(0.7); }
@@ -759,9 +994,13 @@
 		.mini-drop,
 		.metallic-title,
 		.cloud,
-		.scroll-cue i {
+		.scroll-cue i,
+		.astral-item {
 			animation: none !important;
 		}
+		.status-head b.active { animation: none; }
+		.hero-copy,
+		.droplet > *,
 		.droplet {
 			transition: none !important;
 		}

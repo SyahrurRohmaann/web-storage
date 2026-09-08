@@ -2,10 +2,55 @@ import { describe, expect, it } from 'vitest';
 import { heroVisuals } from './heroVisuals';
 
 describe('hero visuals', () => {
+	it('clamps progress and returns Astral title/orb state', () => {
+		expect(heroVisuals(-1).titleOpacity).toBe(1);
+		expect(heroVisuals(0).dropletScale).toBeGreaterThan(1);
+		expect(heroVisuals(0.5).titleOpacity).toBeGreaterThan(0);
+		expect(heroVisuals(0.5).titleOpacity).toBeLessThan(1);
+		expect(heroVisuals(1).titleOpacity).toBe(0);
+		expect(heroVisuals(2).titleOpacity).toBe(0);
+	});
+
+	it('derives title scale, pointer events, orb rise, and field intensity', () => {
+		const start = heroVisuals(0);
+		const mid = heroVisuals(0.5);
+		const end = heroVisuals(1);
+
+		expect(start.titleScale).toBe(1);
+		expect(end.titleScale).toBeLessThan(1);
+		expect(mid.titleScale).toBeLessThan(start.titleScale);
+		expect(mid.titleScale).toBeGreaterThan(end.titleScale);
+
+		expect(start.titlePointerEvents).toBe('auto');
+		expect(end.titlePointerEvents).toBe('none');
+
+		expect(start.dropletY).toBe(0);
+		expect(end.dropletY).toBeLessThan(0);
+		expect(mid.dropletY).toBeLessThan(start.dropletY);
+		expect(mid.dropletY).toBeGreaterThan(end.dropletY);
+
+		expect(start.fieldIntensity).toBe(1);
+		expect(end.fieldIntensity).toBeLessThan(1);
+		expect(mid.fieldIntensity).toBeLessThan(start.fieldIntensity);
+		expect(mid.fieldIntensity).toBeGreaterThan(end.fieldIntensity);
+	});
+
 	it('hides the storage title by the end of the hero scroll', () => {
 		expect(heroVisuals(0).titleOpacity).toBe(1);
 		expect(heroVisuals(1).titleOpacity).toBe(0);
-		expect(heroVisuals(1).titleY).toBeLessThan(0);
+	});
+
+	it('keeps the hero static when reduced motion is preferred', () => {
+		const start = heroVisuals(0, true);
+		const end = heroVisuals(1, true);
+
+		expect(start).toEqual(end);
+		expect(start.titleOpacity).toBe(1);
+		expect(start.titleY).toBe(0);
+		expect(start.titleScale).toBe(1);
+		expect(start.titlePointerEvents).toBe('auto');
+		expect(start.dropletY).toBe(0);
+		expect(start.fieldIntensity).toBe(1);
 	});
 
 	it('keeps the large water droplet reversible as the hero is scrolled', () => {

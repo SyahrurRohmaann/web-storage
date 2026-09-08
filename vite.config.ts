@@ -3,9 +3,11 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
+import { svelteTesting } from '@testing-library/svelte/vite';
 
 export default defineConfig({
 	plugins: [
+		svelteTesting(),
 		tailwindcss(),
 		sveltekit({ adapter: adapter() }),
 		SvelteKitPWA({
@@ -14,8 +16,8 @@ export default defineConfig({
 				name: 'Storage',
 				short_name: 'Storage',
 				description: 'Personal cloud upload with a fluid, playful interface.',
-				theme_color: '#3fa9f5',
-				background_color: '#e8f6ff',
+				theme_color: '#060b18',
+				background_color: '#050b17',
 				display: 'standalone',
 				start_url: '/',
 				icons: [

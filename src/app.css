@@ -1,7 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Baloo+2:wght@700;800&family=Inter:wght@400;600;700;800&display=swap');
 @import "tailwindcss";
 
-:root { font-synthesis: none; text-rendering: optimizeLegibility; }
-body { min-width: 320px; }
-button:focus-visible { outline: 3px solid #ffffff; outline-offset: 5px; }
-::selection { background: #0b4c8c; color: #fff; }
+:root { font-synthesis: none; text-rendering: optimizeLegibility; color-scheme: dark; }
+body { min-width: 320px; overflow-x: hidden; }
+button:focus-visible { outline: 3px solid #38bdf8; outline-offset: 5px; }
+::selection { background: #0284c7; color: #fff; }
