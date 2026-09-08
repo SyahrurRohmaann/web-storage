@@ -30,11 +30,13 @@
 	let prefersReduced = false;
 	let isMobile = false;
 	let requestTick = () => {};
+	let flash: '' | 'charge' | 'return' = '';
+	let reversing = false;
 
 	$: visualProgress = prefersReduced ? 0 : scrollProgress;
 	$: visual = heroVisuals(scrollProgress, prefersReduced);
 	$: easedProgress = easeInOutCubic(visualProgress);
-	$: blobRadius = dropletRadii(easedProgress, pointer.x, pointer.y);
+	$: blobRadius = visualProgress > 0 || prefersReduced ? '50%' : dropletRadii(0, pointer.x, pointer.y);
 	$: dropletX = prefersReduced ? 0 : pointer.x * (1 - easedProgress * 0.8);
 	$: dropletY = prefersReduced ? 0 : pointer.y * (1 - easedProgress * 0.8);
 	$: astralObjects = computeAstralField(scrollProgress, {
@@ -45,6 +47,11 @@
 	onMount(() => {
 		let raf = 0;
 		let lenis: Lenis | null = null;
+		let flashTimer: ReturnType<typeof setTimeout>;
+		let previousProgress = 0;
+		let initialized = false;
+		let velocity = { x: 0, y: 0 };
+		let lastTime = 0;
 		let heroCopyAnimation: { stop: () => void; cancel: () => void } | null = null;
 
 		const mediaReduced = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -56,6 +63,8 @@
 			prefersReduced = mediaReduced.matches;
 			isMobile = mediaMobile.matches;
 			if (prefersReduced) {
+				clearTimeout(flashTimer);
+				flash = '';
 				stopMotion();
 				lenis?.destroy();
 				lenis = null;
@@ -73,8 +82,8 @@
 		if (!prefersReduced && heroCopyEl) {
 			heroCopyAnimation = animate(
 				heroCopyEl.querySelector('.hero-copy-motion') ?? heroCopyEl,
-				{ opacity: [0, 1], y: [24, 0], scale: [0.95, 1] },
-				{ duration: 0.85, ease: [0.22, 1.2, 0.36, 1] }
+				{ opacity: [0, 1], y: [16, 0], scale: [0.95, 1] },
+				{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }
 			);
 		}
 
@@ -83,7 +92,7 @@
 			const scrollY =
 				typeof currentScroll === 'number'
 					? currentScroll
-					: (lenis?.scroll ?? window.scrollY);
+					: window.scrollY;
 			scrollProgress = calculateHeroScrollProgress(
 				scrollY,
 				hero.offsetTop,
@@ -91,19 +100,27 @@
 				window.innerHeight
 			);
 			const h = window.innerHeight, w = window.innerWidth;
+			if (scrollProgress !== previousProgress) reversing = scrollProgress < previousProgress;
+			if (initialized && !prefersReduced && ((previousProgress === 0 && scrollProgress > 0) || (previousProgress > 0 && scrollProgress === 0))) {
+				clearTimeout(flashTimer);
+				flash = scrollProgress === 0 ? 'return' : 'charge';
+				flashTimer = setTimeout(() => { flash = ''; }, 120);
+			}
+			previousProgress = scrollProgress;
+			initialized = true;
 			const orbit = orbitEl.getBoundingClientRect();
 			const start = hero.offsetHeight - h;
 			const end = orbit.top + scrollY + orbit.height / 2 - h * 0.55;
 			const travel = easeInOutCubic((scrollY - start) / Math.max(1, end - start));
-			const lift = easeInOutCubic(scrollProgress);
-			const transit = isMobile ? Math.sin(Math.PI * travel) ** 2 : 0;
-			const size = (isMobile ? 208 : 300) * (1 - lift) + 116 * lift - 64 * transit;
+			const lift = Math.min(1, scrollProgress / 0.8);
+			const overshoot = reversing && scrollProgress < 0.16 ? Math.sin(Math.PI * scrollProgress / 0.16) * 0.025 : 0;
+			const size = ((isMobile ? 208 : 300) * (1 - lift) + 116 * lift) * (1 + overshoot);
 			const targetY = Math.max(78, Math.min(h - 78, orbit.top + orbit.height / 2));
 			dropPosition = prefersReduced ? { x: w - 58, y: h - 58, size: 76 } : {
 				// Arc around the mobile copy/header, then land in the empty orbit.
 				x: w / 2 + (orbit.left + orbit.width / 2 - w / 2) * travel
-					+ (isMobile ? Math.sin(Math.PI * travel) * (w / 2 - 36) : 0),
-				y: h * (0.65 - 0.27 * lift) * (1 - travel) + targetY * travel,
+					+ (isMobile ? Math.sin(Math.PI * travel) * (w / 2 - 64) : 0),
+				y: h * (0.65 - 0.08 * lift) * (1 - travel) + targetY * travel,
 				size
 			};
 		};
@@ -140,11 +157,12 @@
 			lenis?.raf(time);
 			raf = 0;
 			const moving = Math.hypot(targetPointer.x - pointer.x, targetPointer.y - pointer.y) > 0.1;
-			pointer = moving ? {
-				x: pointer.x + (targetPointer.x - pointer.x) * 0.13,
-				y: pointer.y + (targetPointer.y - pointer.y) * 0.13
-			} : { ...targetPointer };
-			if (moving || lenis?.isScrolling === 'smooth') requestTick();
+			const dt = Math.min(2, Math.max(0.25, (time - lastTime) / 16.67));
+			lastTime = time;
+			for (const axis of ['x', 'y'] as const) velocity[axis] = (velocity[axis] + (targetPointer[axis] - pointer[axis]) * 0.08 * dt) * Math.pow(0.72, dt);
+			const settling = moving || Math.hypot(velocity.x, velocity.y) > 0.1;
+			pointer = settling ? { x: pointer.x + velocity.x * dt, y: pointer.y + velocity.y * dt } : { ...targetPointer };
+			if (settling || lenis?.isScrolling === 'smooth') requestTick();
 		};
 		requestTick = () => {
 			if (!prefersReduced && !raf) raf = requestAnimationFrame(tick);
@@ -158,6 +176,7 @@
 		window.addEventListener('resize', onResize);
 
 		return () => {
+			clearTimeout(flashTimer);
 			stopMotion();
 			if (lenis) {
 				lenis.destroy();
@@ -174,7 +193,7 @@
 	});
 
 	function followPointer(event: PointerEvent) {
-		if (prefersReduced || !dropletEl) return;
+		if (prefersReduced || !dropletEl || scrollProgress > 0.08 || event.pointerType === 'touch') return;
 		const rect = dropletEl.getBoundingClientRect();
 		targetPointer = magneticOffset(
 			rect.left + rect.width / 2,
@@ -278,18 +297,22 @@
 	</defs>
 </svg>
 
-<svelte:window onpointermove={followPointer} onpointerup={releasePointer} />
+<svelte:window onpointermove={followPointer} onpointerup={releasePointer} onpointercancel={releasePointer} onblur={releasePointer} />
 
 <main>
 		<button
 			bind:this={dropletEl}
 			class:docked={visualProgress > 0.88}
 			class="droplet"
+			data-flash={flash}
+			class:transitioning={visualProgress > 0 && visualProgress < 1}
+			aria-busy={uploading}
 			type="button"
 			onclick={openPicker}
 			aria-label="Pilih file untuk diunggah"
-			style={`--progress:${easedProgress};--radius:${blobRadius};--mx:${dropletX}px;--my:${dropletY}px;--drop-x:${dropPosition.x ? `${dropPosition.x}px` : '50vw'};--drop-y:${dropPosition.y ? `${dropPosition.y}px` : '65vh'};--drop-size:${dropPosition.size}px;--light-x:${pointer.x * .35}px;--light-y:${pointer.y * .35}px`}
+			style={`--icon-progress:${visual.iconProgress};--progress:${easedProgress};--radius:${blobRadius};--mx:${dropletX}px;--my:${dropletY}px;--drop-x:${dropPosition.x ? `${dropPosition.x}px` : '50vw'};--drop-y:${dropPosition.y ? `${dropPosition.y}px` : '65vh'};--drop-size:${dropPosition.size}px;--light-x:${pointer.x * .35}px;--light-y:${pointer.y * .35}px`}
 		>
+			<span class="rim-light" aria-hidden="true"></span>
 			<div class="droplet-motion" aria-hidden="true">
 				<!-- Layered internal water refraction and caustic structure -->
 				<div class="water-caustic" aria-hidden="true">
@@ -320,7 +343,7 @@
 				<span class="liquid-shimmer"></span>
 
 				<!-- Morphing "+" symbol for upload button -->
-				<span class="plus">+</span>
+				<span class="plus"><span></span><span></span></span>
 
 				<!-- Upload fluid fill -->
 				{#if uploading}
@@ -376,7 +399,8 @@
 		<div
 			bind:this={heroCopyEl}
 			class="hero-copy"
-			style={`opacity:${visual.titleOpacity};transform:translateY(${visual.titleY}px) scale(${visual.titleScale});pointer-events:${visual.titlePointerEvents}`}
+			class:reversing
+			style={`opacity:${visual.titleOpacity};transform:scale(${visual.titleScale});filter:blur(${visual.titleBlur}px);pointer-events:${visual.titlePointerEvents}`}
 		>
 			<div class="hero-copy-motion">
 				<p class="eyebrow">personal cloud · simple by design</p>
@@ -400,6 +424,7 @@
 			<button class="secondary" type="button" onclick={openPicker}>pilih file <span>↗</span></button>
 		</div>
 		<div class="status-panel" aria-live="polite">
+			{#if uploading}<p role="progressbar" aria-label="Pengiriman file ke server" aria-valuemin="0" aria-valuemax="100" aria-valuenow={uploadProgress}>{uploadProgress}%</p>{/if}
 			<div class="status-head"><span>storage status</span><b class:active={uploading}></b></div>
 			<div class="status-orbit" bind:this={orbitEl} aria-hidden="true"></div>
 			{#if message}<p class:success={messageType === 'success'} class:error={messageType === 'error'}>{message}</p>{:else}<p>siap menerima file.</p>{/if}
@@ -566,10 +591,6 @@
 		text-align: center;
 		z-index: 3;
 		transform-origin: 50% 20%;
-		transition: opacity 0.08s linear;
-	}
-	.hero-copy-motion {
-		animation: hero-copy-in 0.9s cubic-bezier(0.22, 1.2, 0.36, 1) both;
 	}
 	.eyebrow {
 		letter-spacing: 0.24em;
@@ -633,7 +654,7 @@
 		padding: 0;
 		display: grid;
 		place-items: center;
-		width: var(--drop-size);
+		width: 300px;
 		aspect-ratio: 1;
 		border-radius: var(--radius);
 		cursor: pointer;
@@ -663,7 +684,7 @@
 			inset -10px -12px 24px rgba(3, 105, 161, 0.4),
 			inset -4px -4px 10px rgba(2, 6, 23, 0.3);
 
-		transform: translate(calc(-50% + var(--mx)), calc(-50% + var(--my)));
+		transform: translate(calc(-50% + var(--mx)), calc(-50% + var(--my))) scale(calc(var(--drop-size) / 300px));
 		transform-origin: center center;
 		transition:
 			border-radius 0.12s linear,
@@ -685,6 +706,15 @@
 	}
 
 	.droplet.docked { animation: none; }
+	.droplet.transitioning { animation: none; }
+	.rim-light { position: absolute; inset: 1px; border: 2px solid white; border-radius: inherit; box-shadow: inset 0 0 18px #8fd3ff; pointer-events: none; animation: idle-glow 2.5s ease-in-out infinite; }
+	.droplet[data-flash="charge"] .rim-light,
+	.droplet[data-flash="return"] .rim-light { animation: charge-flash 120ms ease-out; }
+	.droplet.docked .rim-light { opacity: 0.3; animation: dock-pulse 2.5s ease-in-out infinite; }
+	.droplet.docked .droplet-motion { animation: none; }
+	@keyframes idle-glow { 0%,100% { opacity: 0.3; } 50% { opacity: 0.7; } }
+	@keyframes charge-flash { 0%,100% { opacity: 0.3; transform: scale(1); } 45% { opacity: 1; transform: scale(1.015); box-shadow: inset 0 0 45px white; } }
+	@keyframes dock-pulse { 0%,100% { opacity: 0.2; scale: 1; } 50% { opacity: 0.4; scale: 1.03; } }
 	.droplet:focus-visible { outline: 3px solid #bae6fd; outline-offset: 8px; }
 
 	.droplet-motion {
@@ -799,15 +829,16 @@
 	.plus {
 		position: relative;
 		z-index: 3;
-		font-weight: 300;
-		font-size: clamp(2.4rem, 3.4vw, 3.4rem);
-		line-height: 1;
-		color: #ffffff;
-		opacity: var(--progress);
-		transform: scale(calc(0.4 + var(--progress) * 0.6));
+		width: 100px;
+		height: 100px;
+		opacity: var(--icon-progress);
+		transform: scale(calc(0.6 + var(--icon-progress) * 0.4));
 		transition: transform 0.15s ease, opacity 0.15s ease;
 		text-shadow: 0 2px 6px rgba(0, 48, 96, 0.35);
 	}
+	.plus span { position: absolute; background: white; border-radius: 6px; box-shadow: 0 2px 6px rgba(0, 48, 96, 0.35); }
+	.plus span:first-child { width: 100%; height: 10px; left: 0; top: 45px; }
+	.plus span:last-child { height: 100%; width: 10px; top: 0; left: 45px; }
 
 	/* Progress fill */
 	.fill {
@@ -990,10 +1021,6 @@
 		0%, 100% { translate: 0 0; }
 		50% { translate: 0 -10px; }
 	}
-	@keyframes hero-copy-in {
-		0% { opacity: 0; transform: translateY(24px) scale(0.95); }
-		100% { opacity: 1; transform: translateY(0) scale(1); }
-	}
 	@keyframes droplet-float {
 		0%, 100% { translate: 0 0; }
 		50% { translate: 0 -13px; }
@@ -1030,7 +1057,7 @@
 		.hero { height: 170vh; }
 		.hero-copy { top: 20vh; }
 		.dock-zone { grid-template-columns: 1fr; }
-		.dock-copy { padding-right: 64px; }
+		.dock-copy { padding-right: 128px; }
 		.status-panel { min-height: 390px; }
 		.cloud { transform: scale(0.7); }
 	}
@@ -1044,6 +1071,8 @@
 		.droplet .plus { opacity: 1; transform: none; }
 		/* Motion's cancelled entrance can restore its initial inline transform. */
 		.hero-copy-motion { transform: none !important; opacity: 1 !important; }
+		.hero-copy { transition: none; }
+		.rim-light { animation: none !important; }
 		.hero-copy-motion,
 		.droplet,
 		.droplet-motion,

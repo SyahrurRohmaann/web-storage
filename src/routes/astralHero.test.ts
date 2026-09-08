@@ -58,6 +58,23 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Astral hero motion lifecycle', () => {
+	it('flashes only at idle boundaries and cleans up pointer cancellation', async () => {
+		vi.useFakeTimers();
+		try {
+			const { container } = render(Page);
+			const orb = container.querySelector<HTMLElement>('.droplet')!;
+			await scrollTo(100);
+			expect(orb.dataset.flash).toBe('charge');
+			await vi.advanceTimersByTimeAsync(120);
+			await scrollTo(200);
+			expect(orb.dataset.flash).toBe('');
+			await scrollTo(0);
+			expect(orb.dataset.flash).toBe('return');
+			await vi.advanceTimersByTimeAsync(120);
+			expect(orb.dataset.flash).toBe('');
+			expect(pageSource).toContain('onpointercancel={releasePointer}');
+		} finally { vi.useRealTimers(); }
+	});
 	it('stops Motion, destroys Lenis and cancels RAF when reduced motion changes after mount', async () => {
 		const view = render(Page);
 		await fireEvent.wheel(window, { deltaY: 100 });
@@ -85,8 +102,8 @@ describe('Astral hero motion lifecycle', () => {
 	});
 
 	it('keeps active text and droplet animation contracts in the stylesheet', () => {
-		expect(pageSource).toMatch(/@keyframes\s+hero-copy-in/);
-		expect(pageSource).toMatch(/\.hero-copy-motion\s*\{[\s\S]*?animation:\s*hero-copy-in/);
+		expect(pageSource).not.toMatch(/animation:\s*hero-copy-in/);
+		expect(pageSource).toContain('opacity: [0, 1], y: [16, 0], scale: [0.95, 1]');
 		expect(pageSource).toMatch(/\.droplet\s*\{[\s\S]*?animation:\s*droplet-float/);
 		expect(pageSource).toMatch(/\.droplet\s*\{/);
 	});
