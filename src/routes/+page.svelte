@@ -592,6 +592,8 @@
 			drop-shadow(0 10px 24px rgba(56, 189, 248, 0.28))
 			drop-shadow(0 24px 50px rgba(2, 132, 199, 0.18));
 		transform-origin: center bottom;
+		/* Separate translate from the entrance and scroll transforms. */
+		animation: float 4.6s ease-in-out infinite;
 	}
 
 	.subtitle {
@@ -682,6 +684,9 @@
 	.droplet-motion {
 		position: absolute;
 		inset: 0;
+		/* The inner wrapper owns the plus layout, not the outer grid. */
+		display: grid;
+		place-items: center;
 		border-radius: inherit;
 		pointer-events: none;
 		animation: droplet-shimmer 5.5s ease-in-out infinite;
@@ -1035,6 +1040,8 @@
 
 	@media (prefers-reduced-motion: reduce) {
 		:global(html) { scroll-behavior: auto; }
+		/* Motion's cancelled entrance can restore its initial inline transform. */
+		.hero-copy-motion { transform: none !important; opacity: 1 !important; }
 		.hero-copy-motion,
 		.droplet,
 		.droplet-motion,
