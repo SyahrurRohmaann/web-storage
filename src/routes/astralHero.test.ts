@@ -84,6 +84,28 @@ describe('Astral hero motion lifecycle', () => {
 		expect(frames.size).toBe(0);
 	});
 
+	it('keeps active text and droplet animation contracts in the stylesheet', () => {
+		expect(pageSource).toMatch(/@keyframes\s+hero-copy-in/);
+		expect(pageSource).toMatch(/\.hero-copy-motion\s*\{[\s\S]*?animation:\s*hero-copy-in/);
+		expect(pageSource).toMatch(/\.droplet\s*\{[\s\S]*?animation:\s*droplet-float/);
+		expect(pageSource).toMatch(/\.droplet\s*\{/);
+	});
+
+	it('moves the droplet toward a nearby pointer using the droplet bounds', async () => {
+		const { container } = render(Page);
+		const hero = container.querySelector<HTMLElement>('.hero')!;
+		const droplet = container.querySelector<HTMLElement>('.droplet')!;
+		vi.spyOn(droplet, 'getBoundingClientRect').mockReturnValue({
+			left: 100, top: 420, width: 160, height: 160,
+			right: 260, bottom: 580, x: 100, y: 420,
+			toJSON: () => ({})
+		} as DOMRect);
+		await fireEvent.pointerMove(hero, { clientX: 230, clientY: 500 });
+		frame();
+		await tick();
+		expect(droplet.style.getPropertyValue('--mx')).not.toBe('0px');
+	});
+
 	it('disables orb child transitions in the reduced-motion stylesheet', () => {
 		// jsdom does not evaluate media queries; check this narrow CSS contract directly.
 		const reducedStyles = pageSource.split('@media (prefers-reduced-motion: reduce)')[1];

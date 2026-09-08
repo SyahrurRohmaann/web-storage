@@ -70,7 +70,7 @@
 
 		if (!prefersReduced && heroCopyEl) {
 			heroCopyAnimation = animate(
-				heroCopyEl,
+				heroCopyEl.querySelector('.hero-copy-motion') ?? heroCopyEl,
 				{ opacity: [0, 1], y: [24, 0], scale: [0.95, 1] },
 				{ duration: 0.85, ease: [0.22, 1.2, 0.36, 1] }
 			);
@@ -155,14 +155,14 @@
 	});
 
 	function followPointer(event: PointerEvent) {
-		if (prefersReduced || scrollProgress > 0.45) return;
-		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		if (prefersReduced || scrollProgress > 0.45 || !dropletEl) return;
+		const rect = dropletEl.getBoundingClientRect();
 		targetPointer = magneticOffset(
 			rect.left + rect.width / 2,
 			rect.top + rect.height / 2,
 			event.clientX,
 			event.clientY,
-			220
+			Math.max(220, Math.min(window.innerWidth * 0.42, 360))
 		);
 		requestTick();
 	}
@@ -312,9 +312,11 @@
 			class="hero-copy"
 			style={`opacity:${visual.titleOpacity};transform:translateY(${visual.titleY}px) scale(${visual.titleScale});pointer-events:${visual.titlePointerEvents}`}
 		>
-			<p class="eyebrow">personal cloud · simple by design</p>
-			<h1 class="metallic-title">storage</h1>
-			<p class="subtitle">jatuhkan file, biarkan langit yang menyimpannya.</p>
+			<div class="hero-copy-motion">
+				<p class="eyebrow">personal cloud · simple by design</p>
+				<h1 class="metallic-title">storage</h1>
+				<p class="subtitle">jatuhkan file, biarkan langit yang menyimpannya.</p>
+			</div>
 		</div>
 
 		<button
@@ -326,41 +328,43 @@
 			aria-label="Pilih file untuk diunggah"
 			style={`--progress:${easedProgress};--radius:${blobRadius};--mx:${dropletX}px;--my:${dropletY}px;--rise:${visual.dropletY}px;--droplet-scale:${visual.dropletScale}`}
 		>
-			<!-- Layered internal water refraction and caustic structure -->
-			<div class="water-caustic" aria-hidden="true">
-				<svg viewBox="0 0 100 100" class="caustic-svg" preserveAspectRatio="none">
-					<defs>
-						<radialGradient id="waterRefract" cx="42%" cy="62%" r="58%">
-							<stop offset="0%" stop-color="#ffffff" stop-opacity="0.55" />
-							<stop offset="40%" stop-color="#72cbfd" stop-opacity="0.32" />
-							<stop offset="85%" stop-color="#1e88e5" stop-opacity="0.08" />
-							<stop offset="100%" stop-color="#0d47a1" stop-opacity="0" />
-						</radialGradient>
-					</defs>
-					<ellipse cx="50" cy="56" rx="44" ry="36" fill="url(#waterRefract)" />
-					<path d="M 18,38 Q 50,78 82,38 Q 50,92 18,38 Z" fill="url(#waterRefract)" opacity="0.75" />
-				</svg>
+			<div class="droplet-motion" aria-hidden="true">
+				<!-- Layered internal water refraction and caustic structure -->
+				<div class="water-caustic" aria-hidden="true">
+					<svg viewBox="0 0 100 100" class="caustic-svg" preserveAspectRatio="none">
+						<defs>
+							<radialGradient id="waterRefract" cx="42%" cy="62%" r="58%">
+								<stop offset="0%" stop-color="#ffffff" stop-opacity="0.55" />
+								<stop offset="40%" stop-color="#72cbfd" stop-opacity="0.32" />
+								<stop offset="85%" stop-color="#1e88e5" stop-opacity="0.08" />
+								<stop offset="100%" stop-color="#0d47a1" stop-opacity="0" />
+							</radialGradient>
+						</defs>
+						<ellipse cx="50" cy="56" rx="44" ry="36" fill="url(#waterRefract)" />
+						<path d="M 18,38 Q 50,78 82,38 Q 50,92 18,38 Z" fill="url(#waterRefract)" opacity="0.75" />
+					</svg>
+				</div>
+
+				<!-- Primary specular dome highlight (sun/sky gleam) -->
+				<span class="specular-primary"></span>
+
+				<!-- Secondary specular pinpoint sparkle -->
+				<span class="specular-secondary"></span>
+
+				<!-- Lower rim caustic bounce reflection -->
+				<span class="caustic-rim"></span>
+
+				<!-- Internal liquid meniscus shimmer -->
+				<span class="liquid-shimmer"></span>
+
+				<!-- Morphing "+" symbol for upload button -->
+				<span class="plus">+</span>
+
+				<!-- Upload fluid fill -->
+				{#if uploading}
+					<span class="fill" style={`height:${uploadProgress}%`}></span>
+				{/if}
 			</div>
-
-			<!-- Primary specular dome highlight (sun/sky gleam) -->
-			<span class="specular-primary" aria-hidden="true"></span>
-
-			<!-- Secondary specular pinpoint sparkle -->
-			<span class="specular-secondary" aria-hidden="true"></span>
-
-			<!-- Lower rim caustic bounce reflection -->
-			<span class="caustic-rim" aria-hidden="true"></span>
-
-			<!-- Internal liquid meniscus shimmer -->
-			<span class="liquid-shimmer" aria-hidden="true"></span>
-
-			<!-- Morphing "+" symbol for upload button -->
-			<span class="plus" aria-hidden="true">+</span>
-
-			<!-- Upload fluid fill -->
-			{#if uploading}
-				<span class="fill" style={`height:${uploadProgress}%`}></span>
-			{/if}
 		</button>
 
 		<div class="scroll-cue" style={`opacity:${Math.max(0, 1 - visualProgress * 4)}`}>
@@ -547,6 +551,9 @@
 		transform-origin: 50% 20%;
 		transition: opacity 0.08s linear;
 	}
+	.hero-copy-motion {
+		animation: hero-copy-in 0.9s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+	}
 	.eyebrow {
 		letter-spacing: 0.24em;
 		text-transform: uppercase;
@@ -645,7 +652,8 @@
 			border-radius 0.12s linear,
 			border-color 0.2s ease,
 			box-shadow 0.3s ease;
-		animation: float 4.2s ease-in-out infinite;
+		animation: droplet-float 4.2s ease-in-out infinite;
+		will-change: transform;
 	}
 
 	.droplet:hover {
@@ -671,6 +679,15 @@
 			inset 0 2px 6px rgba(255, 255, 255, 0.65);
 	}
 
+	.droplet-motion {
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		pointer-events: none;
+		animation: droplet-shimmer 5.5s ease-in-out infinite;
+		will-change: transform, opacity;
+	}
+
 	/* Layer 1: Internal caustic & light refraction */
 	.water-caustic {
 		position: absolute;
@@ -685,6 +702,8 @@
 		width: 100%;
 		height: 100%;
 		filter: blur(2px);
+		animation: caustic-shift 4.8s ease-in-out infinite;
+		transform-origin: center;
 	}
 
 	/* Layer 2: Main primary curved specular dome highlight */
@@ -703,6 +722,7 @@
 		);
 		transform: rotate(-24deg);
 		filter: blur(0.8px);
+		animation: specular-sweep 3.8s ease-in-out infinite;
 		pointer-events: none;
 		opacity: calc(1 - var(--progress));
 		transition: opacity 0.2s ease;
@@ -738,6 +758,7 @@
 			rgba(255, 255, 255, 0) 80%
 		);
 		filter: blur(2.5px);
+		animation: rim-breathe 4.2s ease-in-out infinite;
 		pointer-events: none;
 		opacity: calc(1 - var(--progress));
 		transition: opacity 0.2s ease;
@@ -967,6 +988,30 @@
 		0%, 100% { translate: 0 0; }
 		50% { translate: 0 -10px; }
 	}
+	@keyframes hero-copy-in {
+		0% { opacity: 0; transform: translateY(24px) scale(0.95); }
+		100% { opacity: 1; transform: translateY(0) scale(1); }
+	}
+	@keyframes droplet-float {
+		0%, 100% { translate: 0 0; }
+		50% { translate: 0 -13px; }
+	}
+	@keyframes droplet-shimmer {
+		0%, 100% { transform: scale(0.985) rotate(-0.5deg); opacity: 0.92; }
+		50% { transform: scale(1.015) rotate(0.5deg); opacity: 1; }
+	}
+	@keyframes caustic-shift {
+		0%, 100% { transform: translate3d(-5%, -3%, 0) rotate(-3deg) scale(1.05); opacity: 0.55; }
+		50% { transform: translate3d(6%, 4%, 0) rotate(4deg) scale(1.12); opacity: 0.95; }
+	}
+	@keyframes specular-sweep {
+		0%, 100% { transform: translateX(-8%) rotate(-24deg); opacity: 0.7; }
+		50% { transform: translateX(18%) rotate(-18deg); opacity: 1; }
+	}
+	@keyframes rim-breathe {
+		0%, 100% { transform: scaleX(0.9) translateY(3px); opacity: 0.35; }
+		50% { transform: scaleX(1.08) translateY(-2px); opacity: 0.78; }
+	}
 	@keyframes drift {
 		0%, 100% { translate: 0; }
 		50% { translate: 55px; }
@@ -990,7 +1035,12 @@
 
 	@media (prefers-reduced-motion: reduce) {
 		:global(html) { scroll-behavior: auto; }
+		.hero-copy-motion,
 		.droplet,
+		.droplet-motion,
+		.caustic-svg,
+		.specular-primary,
+		.caustic-rim,
 		.mini-drop,
 		.metallic-title,
 		.cloud,
@@ -999,10 +1049,10 @@
 			animation: none !important;
 		}
 		.status-head b.active { animation: none; }
-		.hero-copy,
 		.droplet > *,
 		.droplet {
 			transition: none !important;
+			animation: none !important;
 		}
 	}
 </style>
