@@ -16,6 +16,8 @@
 	let hero: HTMLElement;
 	let heroCopyEl: HTMLElement;
 	let dropletEl: HTMLElement;
+	let orbitEl: HTMLElement;
+	let dropPosition = { x: 0, y: 0, size: 200 };
 	let picker: HTMLInputElement;
 	let scrollProgress = 0;
 	let easedProgress = 0;
@@ -32,9 +34,9 @@
 	$: visualProgress = prefersReduced ? 0 : scrollProgress;
 	$: visual = heroVisuals(scrollProgress, prefersReduced);
 	$: easedProgress = easeInOutCubic(visualProgress);
-	$: blobRadius = dropletRadii(easedProgress);
-	$: dropletX = prefersReduced ? 0 : pointer.x * (1 - easedProgress);
-	$: dropletY = prefersReduced ? 0 : pointer.y * (1 - easedProgress);
+	$: blobRadius = dropletRadii(easedProgress, pointer.x, pointer.y);
+	$: dropletX = prefersReduced ? 0 : pointer.x * (1 - easedProgress * 0.8);
+	$: dropletY = prefersReduced ? 0 : pointer.y * (1 - easedProgress * 0.8);
 	$: astralObjects = computeAstralField(scrollProgress, {
 		prefersReducedMotion: prefersReduced,
 		isMobile
@@ -47,7 +49,7 @@
 
 		const mediaReduced = window.matchMedia('(prefers-reduced-motion: reduce)');
 		prefersReduced = mediaReduced.matches;
-		const mediaMobile = window.matchMedia('(max-width: 768px)');
+		const mediaMobile = window.matchMedia('(max-width: 900px)');
 		isMobile = mediaMobile.matches;
 
 		const onMediaChange = () => {
@@ -88,6 +90,22 @@
 				hero.offsetHeight,
 				window.innerHeight
 			);
+			const h = window.innerHeight, w = window.innerWidth;
+			const orbit = orbitEl.getBoundingClientRect();
+			const start = hero.offsetHeight - h;
+			const end = orbit.top + scrollY + orbit.height / 2 - h * 0.55;
+			const travel = easeInOutCubic((scrollY - start) / Math.max(1, end - start));
+			const lift = easeInOutCubic(scrollProgress);
+			const transit = isMobile ? Math.sin(Math.PI * travel) ** 2 : 0;
+			const size = (isMobile ? 208 : 300) * (1 - lift) + 116 * lift - 64 * transit;
+			const targetY = Math.max(78, Math.min(h - 78, orbit.top + orbit.height / 2));
+			dropPosition = prefersReduced ? { x: w - 58, y: h - 58, size: 76 } : {
+				// Arc around the mobile copy/header, then land in the empty orbit.
+				x: w / 2 + (orbit.left + orbit.width / 2 - w / 2) * travel
+					+ (isMobile ? Math.sin(Math.PI * travel) * (w / 2 - 36) : 0),
+				y: h * (0.65 - 0.27 * lift) * (1 - travel) + targetY * travel,
+				size
+			};
 		};
 
 		function stopMotion() {
@@ -108,6 +126,7 @@
 		}
 
 		const onNativeScroll = () => {
+			releasePointer();
 			updateScroll(window.scrollY);
 		};
 
@@ -155,7 +174,7 @@
 	});
 
 	function followPointer(event: PointerEvent) {
-		if (prefersReduced || scrollProgress > 0.45 || !dropletEl) return;
+		if (prefersReduced || !dropletEl) return;
 		const rect = dropletEl.getBoundingClientRect();
 		targetPointer = magneticOffset(
 			rect.left + rect.width / 2,
@@ -259,13 +278,60 @@
 	</defs>
 </svg>
 
+<svelte:window onpointermove={followPointer} onpointerup={releasePointer} />
+
 <main>
+		<button
+			bind:this={dropletEl}
+			class:docked={visualProgress > 0.88}
+			class="droplet"
+			type="button"
+			onclick={openPicker}
+			aria-label="Pilih file untuk diunggah"
+			style={`--progress:${easedProgress};--radius:${blobRadius};--mx:${dropletX}px;--my:${dropletY}px;--drop-x:${dropPosition.x ? `${dropPosition.x}px` : '50vw'};--drop-y:${dropPosition.y ? `${dropPosition.y}px` : '65vh'};--drop-size:${dropPosition.size}px;--light-x:${pointer.x * .35}px;--light-y:${pointer.y * .35}px`}
+		>
+			<div class="droplet-motion" aria-hidden="true">
+				<!-- Layered internal water refraction and caustic structure -->
+				<div class="water-caustic" aria-hidden="true">
+					<svg viewBox="0 0 100 100" class="caustic-svg" preserveAspectRatio="none">
+						<defs>
+							<radialGradient id="waterRefract" cx="42%" cy="62%" r="58%">
+								<stop offset="0%" stop-color="#ffffff" stop-opacity="0.55" />
+								<stop offset="40%" stop-color="#72cbfd" stop-opacity="0.32" />
+								<stop offset="85%" stop-color="#1e88e5" stop-opacity="0.08" />
+								<stop offset="100%" stop-color="#0d47a1" stop-opacity="0" />
+							</radialGradient>
+						</defs>
+						<ellipse cx="50" cy="56" rx="44" ry="36" fill="url(#waterRefract)" />
+						<path d="M 18,38 Q 50,78 82,38 Q 50,92 18,38 Z" fill="url(#waterRefract)" opacity="0.75" />
+					</svg>
+				</div>
+
+				<!-- Primary specular dome highlight (sun/sky gleam) -->
+				<span class="specular-primary"></span>
+
+				<!-- Secondary specular pinpoint sparkle -->
+				<span class="specular-secondary"></span>
+
+				<!-- Lower rim caustic bounce reflection -->
+				<span class="caustic-rim"></span>
+
+				<!-- Internal liquid meniscus shimmer -->
+				<span class="liquid-shimmer"></span>
+
+				<!-- Morphing "+" symbol for upload button -->
+				<span class="plus">+</span>
+
+				<!-- Upload fluid fill -->
+				{#if uploading}
+					<span class="fill" style={`height:${uploadProgress}%`}></span>
+				{/if}
+			</div>
+		</button>
 	<section
 		class="hero"
 		aria-label="Hero dan area unggah"
 		bind:this={hero}
-		onpointermove={followPointer}
-		onpointerleave={releasePointer}
 		ondragover={(e) => e.preventDefault()}
 		ondrop={onDrop}
 	>
@@ -319,53 +385,6 @@
 			</div>
 		</div>
 
-		<button
-			bind:this={dropletEl}
-			class:docked={visualProgress > 0.88}
-			class="droplet"
-			type="button"
-			onclick={openPicker}
-			aria-label="Pilih file untuk diunggah"
-			style={`--progress:${easedProgress};--radius:${blobRadius};--mx:${dropletX}px;--my:${dropletY}px;--rise:${visual.dropletY}px;--droplet-scale:${visual.dropletScale}`}
-		>
-			<div class="droplet-motion" aria-hidden="true">
-				<!-- Layered internal water refraction and caustic structure -->
-				<div class="water-caustic" aria-hidden="true">
-					<svg viewBox="0 0 100 100" class="caustic-svg" preserveAspectRatio="none">
-						<defs>
-							<radialGradient id="waterRefract" cx="42%" cy="62%" r="58%">
-								<stop offset="0%" stop-color="#ffffff" stop-opacity="0.55" />
-								<stop offset="40%" stop-color="#72cbfd" stop-opacity="0.32" />
-								<stop offset="85%" stop-color="#1e88e5" stop-opacity="0.08" />
-								<stop offset="100%" stop-color="#0d47a1" stop-opacity="0" />
-							</radialGradient>
-						</defs>
-						<ellipse cx="50" cy="56" rx="44" ry="36" fill="url(#waterRefract)" />
-						<path d="M 18,38 Q 50,78 82,38 Q 50,92 18,38 Z" fill="url(#waterRefract)" opacity="0.75" />
-					</svg>
-				</div>
-
-				<!-- Primary specular dome highlight (sun/sky gleam) -->
-				<span class="specular-primary"></span>
-
-				<!-- Secondary specular pinpoint sparkle -->
-				<span class="specular-secondary"></span>
-
-				<!-- Lower rim caustic bounce reflection -->
-				<span class="caustic-rim"></span>
-
-				<!-- Internal liquid meniscus shimmer -->
-				<span class="liquid-shimmer"></span>
-
-				<!-- Morphing "+" symbol for upload button -->
-				<span class="plus">+</span>
-
-				<!-- Upload fluid fill -->
-				{#if uploading}
-					<span class="fill" style={`height:${uploadProgress}%`}></span>
-				{/if}
-			</div>
-		</button>
 
 		<div class="scroll-cue" style={`opacity:${Math.max(0, 1 - visualProgress * 4)}`}>
 			<span>scroll to lift the drop</span><i></i>
@@ -382,9 +401,7 @@
 		</div>
 		<div class="status-panel" aria-live="polite">
 			<div class="status-head"><span>storage status</span><b class:active={uploading}></b></div>
-			<div class="status-orbit">
-				<div class="mini-drop"><span>{uploading ? `${uploadProgress}%` : '+'}</span></div>
-			</div>
+			<div class="status-orbit" bind:this={orbitEl} aria-hidden="true"></div>
 			{#if message}<p class:success={messageType === 'success'} class:error={messageType === 'error'}>{message}</p>{:else}<p>siap menerima file.</p>{/if}
 		</div>
 	</section>
@@ -608,15 +625,15 @@
 	/* Substantially larger, realistically water-like droplet */
 	.droplet {
 		--progress: 0;
-		--droplet-scale: 1.5;
-		position: sticky;
-		z-index: 4;
-		top: calc(66vh - 65px);
-		margin: 0 auto;
-		margin-top: 30vh;
+		position: fixed;
+		z-index: 10;
+		left: var(--drop-x, 50vw);
+		top: var(--drop-y, 65vh);
+		margin: 0;
+		padding: 0;
 		display: grid;
 		place-items: center;
-		width: clamp(150px, 18vw, 210px);
+		width: var(--drop-size);
 		aspect-ratio: 1;
 		border-radius: var(--radius);
 		cursor: pointer;
@@ -628,13 +645,13 @@
 		/* Optical transparent liquid glass against astral sky */
 		background: radial-gradient(
 			136% 136% at 30% 24%,
-			rgba(255, 255, 255, 0.45) 0%,
-			rgba(186, 230, 253, 0.26) 24%,
-			rgba(56, 189, 248, 0.38) 64%,
-			rgba(2, 132, 199, 0.68) 100%
+			rgba(255, 255, 255, 0.3) 0%,
+			rgba(186, 230, 253, 0.1) 24%,
+			rgba(56, 189, 248, 0.2) 64%,
+			rgba(2, 132, 199, 0.48) 100%
 		);
-		backdrop-filter: blur(10px) saturate(160%) brightness(110%);
-		-webkit-backdrop-filter: blur(10px) saturate(160%) brightness(110%);
+		backdrop-filter: blur(3px) saturate(140%) brightness(110%);
+		-webkit-backdrop-filter: blur(3px) saturate(140%) brightness(110%);
 
 		border: 1.5px solid rgba(255, 255, 255, 0.72);
 		box-shadow:
@@ -646,9 +663,7 @@
 			inset -10px -12px 24px rgba(3, 105, 161, 0.4),
 			inset -4px -4px 10px rgba(2, 6, 23, 0.3);
 
-		transform: translate(var(--mx), calc(var(--my) + var(--rise)))
-			rotate(calc((1 - var(--progress)) * 26deg))
-			scale(var(--droplet-scale));
+		transform: translate(calc(-50% + var(--mx)), calc(-50% + var(--my)));
 		transform-origin: center center;
 		transition:
 			border-radius 0.12s linear,
@@ -669,17 +684,8 @@
 			0 0 0 8px rgba(56, 189, 248, 0.2);
 	}
 
-	.droplet.docked {
-		border-radius: 50%;
-		animation: none;
-		background: linear-gradient(145deg, #38bdf8, #0284c7);
-		border: 2px solid rgba(255, 255, 255, 0.95);
-		box-shadow:
-			0 16px 36px rgba(2, 6, 23, 0.6),
-			0 6px 16px rgba(2, 132, 199, 0.4),
-			0 0 24px rgba(56, 189, 248, 0.4),
-			inset 0 2px 6px rgba(255, 255, 255, 0.65);
-	}
+	.droplet.docked { animation: none; }
+	.droplet:focus-visible { outline: 3px solid #bae6fd; outline-offset: 8px; }
 
 	.droplet-motion {
 		position: absolute;
@@ -700,7 +706,7 @@
 		pointer-events: none;
 		overflow: hidden;
 		border-radius: inherit;
-		opacity: calc(1 - var(--progress));
+		opacity: calc(1 - var(--progress) * 0.25);
 		transition: opacity 0.2s ease;
 	}
 	.caustic-svg {
@@ -716,6 +722,7 @@
 		position: absolute;
 		width: 44%;
 		height: 25%;
+		translate: var(--light-x) var(--light-y);
 		left: 17%;
 		top: 15%;
 		border-radius: 50%;
@@ -729,7 +736,7 @@
 		filter: blur(0.8px);
 		animation: specular-sweep 3.8s ease-in-out infinite;
 		pointer-events: none;
-		opacity: calc(1 - var(--progress));
+		opacity: calc(1 - var(--progress) * 0.25);
 		transition: opacity 0.2s ease;
 	}
 
@@ -738,13 +745,14 @@
 		position: absolute;
 		width: 7%;
 		height: 7%;
+		translate: calc(var(--light-x) * -0.7) calc(var(--light-y) * -0.7);
 		left: 64%;
 		top: 24%;
 		border-radius: 50%;
 		background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0) 100%);
 		filter: blur(0.4px);
 		pointer-events: none;
-		opacity: calc(1 - var(--progress));
+		opacity: calc(1 - var(--progress) * 0.25);
 		transition: opacity 0.2s ease;
 	}
 
@@ -765,7 +773,7 @@
 		filter: blur(2.5px);
 		animation: rim-breathe 4.2s ease-in-out infinite;
 		pointer-events: none;
-		opacity: calc(1 - var(--progress));
+		opacity: calc(1 - var(--progress) * 0.25);
 		transition: opacity 0.2s ease;
 	}
 
@@ -773,6 +781,7 @@
 	.liquid-shimmer {
 		position: absolute;
 		inset: 4px;
+		translate: calc(var(--light-x) * -0.25) calc(var(--light-y) * -0.25);
 		border-radius: inherit;
 		background: linear-gradient(
 			130deg,
@@ -782,7 +791,7 @@
 			transparent 100%
 		);
 		pointer-events: none;
-		opacity: calc(1 - var(--progress));
+		opacity: calc(1 - var(--progress) * 0.25);
 		transition: opacity 0.2s ease;
 	}
 
@@ -966,18 +975,6 @@
 		background-size: 28px 28px;
 		mask-image: radial-gradient(circle, black, transparent 68%);
 	}
-	.mini-drop {
-		width: 145px;
-		aspect-ratio: 1;
-		border-radius: 48% 52% 55% 45%;
-		display: grid;
-		place-items: center;
-		color: #fff;
-		font-size: 3.3rem;
-		background: linear-gradient(145deg, #38bdf8, #0284c7);
-		box-shadow: inset 15px 15px 30px rgba(255, 255, 255, 0.35), 0 32px 65px rgba(2, 132, 199, 0.4);
-		animation: float 4s ease-in-out infinite;
-	}
 	.status-panel > p {
 		text-align: center;
 		color: #94a3b8;
@@ -1029,17 +1026,22 @@
 		50% { opacity: 0.35; transform: scale(0.75); }
 	}
 
-	@media (max-width: 760px) {
+	@media (max-width: 900px) {
 		.hero { height: 170vh; }
 		.hero-copy { top: 20vh; }
-		.droplet { top: 62vh; width: clamp(130px, 32vw, 160px); }
 		.dock-zone { grid-template-columns: 1fr; }
+		.dock-copy { padding-right: 64px; }
 		.status-panel { min-height: 390px; }
 		.cloud { transform: scale(0.7); }
 	}
 
+	@media (max-width: 360px) {
+		.status-head { font-size: 0.56rem; letter-spacing: 0.08em; }
+	}
+
 	@media (prefers-reduced-motion: reduce) {
 		:global(html) { scroll-behavior: auto; }
+		.droplet .plus { opacity: 1; transform: none; }
 		/* Motion's cancelled entrance can restore its initial inline transform. */
 		.hero-copy-motion { transform: none !important; opacity: 1 !important; }
 		.hero-copy-motion,
@@ -1048,7 +1050,6 @@
 		.caustic-svg,
 		.specular-primary,
 		.caustic-rim,
-		.mini-drop,
 		.metallic-title,
 		.cloud,
 		.scroll-cue i,

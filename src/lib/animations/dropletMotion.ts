@@ -8,9 +8,11 @@ export const easeInOutCubic = (progress: number) => {
 	return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 };
 
-export function dropletRadii(progress: number) {
+export function dropletRadii(progress: number, pullX = 0, pullY = 0) {
 	const t = clamp01(progress);
-	const radii = [62, 38, 58, 42, 46, 52, 48, 54].map((value) => Math.round(lerp(value, 50, t)));
+	const offsets = [pullX, -pullX, pullX, -pullX, pullY, -pullY, pullY, -pullY];
+	const radii = [62, 38, 58, 42, 46, 52, 48, 54].map((value, i) =>
+		Math.round(lerp(value, 50, t) + Math.max(-9, Math.min(9, offsets[i] * 0.18)) * (1 - t * 0.65)));
 	return `${radii[0]}% ${radii[1]}% ${radii[2]}% ${radii[3]}% / ${radii[4]}% ${radii[5]}% ${radii[6]}% ${radii[7]}%`;
 }
 

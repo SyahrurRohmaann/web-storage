@@ -149,7 +149,7 @@ describe('Astral hero motion lifecycle', () => {
 		expect(frames.size).toBe(1);
 		for (let i = 0; i < 100; i++) frame(48 + i * 16);
 		expect(frames.size).toBe(0);
-		await fireEvent.pointerLeave(container.querySelector('.hero')!);
+		await fireEvent.pointerUp(window);
 		expect(frames.size).toBe(1);
 		for (let i = 0; i < 100; i++) frame(2000 + i * 16);
 		expect(frames.size).toBe(0);
