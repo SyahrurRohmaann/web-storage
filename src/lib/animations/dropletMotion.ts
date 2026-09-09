@@ -12,7 +12,7 @@ export function dropletRadii(progress: number, pullX = 0, pullY = 0) {
 	const t = clamp01(progress);
 	const offsets = [pullX, -pullX, pullX, -pullX, pullY, -pullY, pullY, -pullY];
 	const radii = [62, 38, 58, 42, 46, 52, 48, 54].map((value, i) =>
-		Math.round(lerp(value, 50, t) + Math.max(-9, Math.min(9, offsets[i] * 0.18)) * (1 - t * 0.65)));
+		Math.round(lerp(value, 50, t) + Math.max(-9, Math.min(9, offsets[i] * 0.18)) * (1 - t)));
 	return `${radii[0]}% ${radii[1]}% ${radii[2]}% ${radii[3]}% / ${radii[4]}% ${radii[5]}% ${radii[6]}% ${radii[7]}%`;
 }
 
@@ -21,7 +21,8 @@ export function magneticOffset(
 	originY: number,
 	pointerX: number,
 	pointerY: number,
-	radius: number
+	radius: number,
+	maxTravelRatio = 0.3
 ) {
 	const dx = pointerX - originX;
 	const dy = pointerY - originY;
@@ -29,7 +30,7 @@ export function magneticOffset(
 	if (!radius || distance >= radius) return { x: 0, y: 0 };
 
 	const pull = Math.pow(1 - distance / radius, 1.4);
-	const maxTravel = radius * 0.3;
+	const maxTravel = radius * maxTravelRatio;
 	if (distance === 0) return { x: 0, y: 0 };
 	return {
 		x: (dx / distance) * maxTravel * pull,

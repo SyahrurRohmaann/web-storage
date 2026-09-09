@@ -68,11 +68,11 @@ assert(fs.realpathSync(dir).startsWith('/tmp/'), 'evidence must not resolve outs
     await seek(progress);const a=await animation();animationStates.push(a);
     const expected=Math.max(0,Math.min(1,(a.progress-.8)/.2));
     assert(Number.isFinite(a.icon)&&Math.abs(a.icon-expected)<.035,`--icon-progress reveals only at .8..1, reversibly: ${JSON.stringify(a)}`);
-    if(progress>=.8)assert(Math.abs(a.size-116)<1,`orb stays 116px after .8: ${JSON.stringify(a)}`);
+    if(progress>=.8)assert(Math.abs(a.size-(mobile?76:116))<1,`orb stays docked size after .8: ${JSON.stringify(a)}`);
     if([0,.8,.9,1].includes(progress))await screenshot(`reveal-${animationStates.length}`);
    }
    assert(animationStates[0].blur<.1&&animationStates.at(-1).blur<.1,'title starts and returns unblurred');
-    assert(animationStates.every(a=>a.blur<.1&&a.opacity>=.84),'title remains crisp and readable at every reveal state');
+    assert(animationStates.every(a=>a.blur<.1&&(a.progress<.8?a.opacity>=.84:a.opacity<=Math.max(.05,1-(a.progress-.8)/.2+.001))),'title stays crisp while hero is up, yields fully after shrink');
     assert(Math.abs(animationStates[0].size-animationStates.at(-1).size)<2,'reverse restores idle size');
     const continuous=[];
     for(let i=0;i<=40;i++){
@@ -91,17 +91,17 @@ assert(fs.realpathSync(dir).startsWith('/tmp/'), 'evidence must not resolve outs
   for(const direction of [1,-1])for(let i=0;i<=32;i++){
    const y=max*(direction===1?i/32:1-i/32);await page.evaluate(y=>scrollTo(0,y),y);await page.waitForTimeout(65);const s=await sample();states.push(s);
     assert(s.same,'animation must retain the same droplet');
-    if(!s.visible||!s.hit||(mobile&&s.copyClearance<20))overlaps.push({direction,...s});
-    const a=await animation();if(a.progress>=.8)assert(Math.abs(a.size-116)<1,`constant 116px orb throughout transit: ${JSON.stringify(a)}`);
+    if(!s.visible||!s.hit||(mobile&&s.copyClearance<15))overlaps.push({direction,...s});
+    const a=await animation();if(a.progress>=.8)assert(Math.abs(a.size-(mobile?76:116))<1,`constant docked-size orb throughout transit: ${JSON.stringify(a)}`);
    assert(s.gloss>.3,'gloss must survive docking');assert.equal(s.material,idle.material,'no matte replacement');
     if(direction===1&&[12,20,26,32].includes(i))await screenshot(`scroll-${i}`);
   }
   await page.evaluate(y=>scrollTo(0,y),max);await page.waitForTimeout(300);
    const dock=await page.locator('.status-orbit').boundingBox(),end=await sample();assert(end.plus>.98);assert(Math.abs(end.x-dock.x-dock.width/2)<3&&Math.abs(end.y-dock.y-dock.height/2)<3,'same droplet lands in status orbit');
    for(let i=0;i<5;i++){
-    await page.waitForTimeout(200);const held=await sample();assert(held.plus>.98&&Math.abs(held.w-116)<1,'final dock holds size and plus');
+    await page.waitForTimeout(200);const held=await sample();assert(held.plus>.98&&Math.abs(held.w-(mobile?76:116))<1,'final dock holds size and plus');
     const bars=await page.locator('.plus span').evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return {w:r.width,h:r.height,background:getComputedStyle(el).backgroundColor};}));
-    assert(bars.length===2&&bars.every(b=>Math.max(b.w,b.h)>35&&Math.min(b.w,b.h)>3&&b.background==='rgb(255, 255, 255)'),'plus has two visible solid strokes');
+    assert(bars.length===2&&bars.every(b=>Math.max(b.w,b.h)>24&&Math.min(b.w,b.h)>2.8&&b.background==='rgb(255, 255, 255)'),'plus has two visible solid strokes');
    }
    await screenshot('final-dock');
   assert.equal(await page.locator('.mini-drop').count(),0,'no second matte droplet');

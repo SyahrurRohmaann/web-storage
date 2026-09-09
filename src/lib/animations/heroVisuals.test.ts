@@ -7,8 +7,8 @@ describe('hero visuals', () => {
 		expect(heroVisuals(0).dropletScale).toBeGreaterThan(1);
 		expect(heroVisuals(0.5).titleOpacity).toBeGreaterThan(0);
 		expect(heroVisuals(0.5).titleOpacity).toBeLessThan(1);
-		expect(heroVisuals(1).titleOpacity).toBe(0.85);
-		expect(heroVisuals(2).titleOpacity).toBe(0.85);
+		expect(heroVisuals(1).titleOpacity).toBe(0);
+		expect(heroVisuals(2).titleOpacity).toBe(0);
 	});
 
 	it('derives title scale, pointer events, orb rise, and field intensity', () => {
@@ -22,7 +22,7 @@ describe('hero visuals', () => {
 		expect(mid.titleScale).toBeGreaterThan(end.titleScale);
 
 		expect(start.titlePointerEvents).toBe('auto');
-		expect(end.titlePointerEvents).toBe('auto');
+		expect(end.titlePointerEvents).toBe('none');
 
 		expect(start.dropletY).toBe(0);
 		expect(end.dropletY).toBeLessThan(0);
@@ -37,7 +37,8 @@ describe('hero visuals', () => {
 
 	it('keeps the storage title readable through the hero scroll', () => {
 		expect(heroVisuals(0).titleOpacity).toBe(1);
-		expect(heroVisuals(1).titleOpacity).toBe(0.85);
+		expect(heroVisuals(0.79).titleOpacity).toBeGreaterThan(0.85);
+		expect(heroVisuals(1).titleOpacity).toBe(0);
 	});
 
 	it('keeps the hero static when reduced motion is preferred', () => {

@@ -108,21 +108,35 @@
 			}
 			previousProgress = scrollProgress;
 			initialized = true;
-			const orbit = orbitEl.getBoundingClientRect();
-			const start = hero.offsetHeight - h;
-			const end = orbit.top + scrollY + orbit.height / 2 - h * 0.55;
-			const travel = easeInOutCubic((scrollY - start) / Math.max(1, end - start));
-			const lift = Math.min(1, scrollProgress / 0.8);
-			const overshoot = reversing && scrollProgress < 0.16 ? Math.sin(Math.PI * scrollProgress / 0.16) * 0.025 : 0;
-			const size = ((isMobile ? 208 : 300) * (1 - lift) + 116 * lift) * (1 + overshoot);
-			const targetY = Math.max(78, Math.min(h - 78, orbit.top + orbit.height / 2));
-			dropPosition = prefersReduced ? { x: w - 58, y: h - 58, size: 76 } : {
-				// Arc around the mobile copy/header, then land in the empty orbit.
-				x: w / 2 + (orbit.left + orbit.width / 2 - w / 2) * travel
-					+ (isMobile ? Math.sin(Math.PI * travel) * (w / 2 - 64) : 0),
-				y: h * (0.65 - 0.08 * lift) * (1 - travel) + targetY * travel,
-				size
-			};
+			if (prefersReduced) {
+				dropPosition = { x: w - 58, y: h - 58, size: 76 };
+			} else if (scrollProgress > 0) {
+				const orbit = orbitEl.getBoundingClientRect();
+				const maxScroll = Math.max(1, document.documentElement.scrollHeight - h);
+				const heroStart = hero.offsetHeight - h;
+				const end = Math.min(maxScroll, orbit.top + scrollY + orbit.height / 2 - h * 0.55);
+				const travel = easeInOutCubic((scrollY - heroStart) / Math.max(1, end - heroStart));
+				const lift = Math.min(1, scrollProgress / 0.8);
+				const overshoot = reversing && scrollProgress < 0.16 ? Math.sin(Math.PI * scrollProgress / 0.16) * 0.025 : 0;
+				const size = ((isMobile ? 150 : 240) * (1 - lift) + (isMobile ? 76 : 116) * lift) * (1 + overshoot);
+				const targetY = Math.max(78, Math.min(h - 78, orbit.top + orbit.height / 2));
+				dropPosition = {
+					// Keep a reserved right rail clear of copy while transiting, then land in the empty orbit.
+					x: isMobile && travel > 0 && travel < 1
+						? w - size / 2 - 2
+						: w / 2 + (orbit.left + orbit.width / 2 - w / 2) * travel,
+					y: h * (0.72 - 0.15 * lift) * (1 - travel) + targetY * travel,
+					size
+				};
+				// Snap precisely onto the orbit once it is the active scroll anchor.
+				if (travel >= 1) {
+					dropPosition.x = orbit.left + orbit.width / 2;
+					dropPosition.y = Math.max(78, Math.min(h - 78, orbit.top + orbit.height / 2));
+					dropPosition.size = isMobile ? 76 : 116;
+				}
+			} else {
+				dropPosition = { x: w / 2, y: h * 0.72, size: isMobile ? 150 : 240 };
+			}
 		};
 
 		function stopMotion() {
@@ -200,7 +214,8 @@
 			rect.top + rect.height / 2,
 			event.clientX,
 			event.clientY,
-			Math.max(220, Math.min(window.innerWidth * 0.42, 360))
+			Math.max(280, Math.min(window.innerWidth * 0.5, 420)),
+			0.22
 		);
 		requestTick();
 	}
@@ -837,8 +852,8 @@
 		text-shadow: 0 2px 6px rgba(0, 48, 96, 0.35);
 	}
 	.plus span { position: absolute; background: white; border-radius: 6px; box-shadow: 0 2px 6px rgba(0, 48, 96, 0.35); }
-	.plus span:first-child { width: 100%; height: 10px; left: 0; top: 45px; }
-	.plus span:last-child { height: 100%; width: 10px; top: 0; left: 45px; }
+	.plus span:first-child { width: 100%; height: 12px; left: 0; top: 44px; }
+	.plus span:last-child { height: 100%; width: 12px; top: 0; left: 44px; }
 
 	/* Progress fill */
 	.fill {
@@ -1056,9 +1071,10 @@
 	@media (max-width: 900px) {
 		.hero { height: 170vh; }
 		.hero-copy { top: 20vh; }
-		.dock-zone { grid-template-columns: 1fr; }
-		.dock-copy { padding-right: 128px; }
-		.status-panel { min-height: 390px; }
+		.dock-zone { grid-template-columns: 1fr; padding-left: 132px; padding-right: 158px; }
+		.dock-copy { padding-right: 0; margin-bottom: 64px; }
+		.dock-copy p { max-width: 100%; }
+		.status-panel { min-height: 390px; margin-top: 40px; }
 		.cloud { transform: scale(0.7); }
 	}
 

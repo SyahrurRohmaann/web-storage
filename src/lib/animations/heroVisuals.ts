@@ -15,7 +15,11 @@ export interface HeroVisualState {
 export function heroVisuals(progress: number, prefersReducedMotion = false): HeroVisualState {
 	const clamped = clamp01(progress);
 	const visualProgress = prefersReducedMotion ? 0 : clamped;
-	const titleOpacity = Math.round((1 - visualProgress * 0.15) * 1000) / 1000;
+	const titleOpacity = prefersReducedMotion
+		? 1
+		: visualProgress < 0.8
+			? Math.round((1 - visualProgress * 0.15) * 1000) / 1000
+			: Math.round(clamp01(1 - (visualProgress - 0.8) / 0.2) * 1000) / 1000;
 	return {
 		titleOpacity,
 		titleY: 0,

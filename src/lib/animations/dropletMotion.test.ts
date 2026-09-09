@@ -25,6 +25,8 @@ describe('droplet motion math', () => {
     expect(dropletRadii(1)).toBe('50% 50% 50% 50% / 50% 50% 50% 50%');
     expect(dropletRadii(0.5)).not.toBe(dropletRadii(0));
     expect(dropletRadii(0.5)).not.toBe(dropletRadii(1));
+    expect(dropletRadii(0, 60)).not.toBe(dropletRadii(0));
+    expect(dropletRadii(1, 60)).toBe('50% 50% 50% 50% / 50% 50% 50% 50%');
   });
 
   it('limits magnetic attraction and returns zero outside radius', () => {
@@ -32,5 +34,7 @@ describe('droplet motion math', () => {
     const near = magneticOffset(100, 100, 140, 120, 80);
     expect(Math.hypot(near.x, near.y)).toBeLessThanOrEqual(24.01);
     expect(near.x).toBeGreaterThan(0);
+    const wide = magneticOffset(100, 100, 140, 120, 80, 0.5);
+    expect(Math.hypot(wide.x, wide.y)).toBeGreaterThan(Math.hypot(near.x, near.y));
   });
 });
