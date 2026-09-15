@@ -27,14 +27,19 @@ print('vps env:', (write.stdout or '').strip() or f'GAGAL {write.stderr[:150]}')
 if 'ENV_WRITTEN' not in write.stdout:
     sys.exit(1)
 
-# 2) recreate container dengan env-file baru
+# 2) recreate container dengan env-file baru.
+#    Token OAuth ada di bind mount (bukan layer container) supaya selamat tiap
+#    rebuild; proses jalan sebagai uid 10001 (non-root).
 recreate = (
+    'sudo -n mkdir -p /home/ubuntu/web-storage-data && '
     'sudo -n docker rm -f web-storage >/dev/null 2>&1; '
     'sudo -n docker run -d --name web-storage --restart unless-stopped '
     '--env-file /home/ubuntu/web-storage/.env '
     '-e ORIGIN=https://storecloud.my.id '
     '-e PROTOCOL_HEADER=x-forwarded-proto '
     '-e HOST_HEADER=x-forwarded-host '
+    '-e REFRESH_TOKEN_FILE=/app/data/.refresh-token '
+    '-v /home/ubuntu/web-storage-data:/app/data '
     '-p 127.0.0.1:8797:3000 web-storage:latest >/dev/null && echo CONTAINER_UP'
 )
 run = subprocess.run(SSH + [recreate], capture_output=True, text=True, timeout=180)
