@@ -40,7 +40,7 @@ recreate = (
     '-e HOST_HEADER=x-forwarded-host '
     '-e REFRESH_TOKEN_FILE=/app/data/.refresh-token '
     '-v /home/ubuntu/web-storage-data:/app/data '
-    '-p 127.0.0.1:8797:3000 web-storage:latest >/dev/null && echo CONTAINER_UP'
+    '-p 127.0.0.1:8797:3000 web-storage:nonroot >/dev/null && echo CONTAINER_UP'
 )
 run = subprocess.run(SSH + [recreate], capture_output=True, text=True, timeout=180)
 print('container:', (run.stdout or '').strip() or f'GAGAL {run.stderr[:200]}')
